@@ -249,6 +249,24 @@
   ::-webkit-scrollbar{width:9px;height:9px;}
   ::-webkit-scrollbar-thumb{background:var(--accent-dim);border-radius:5px;}
   ::-webkit-scrollbar-track{background:transparent;}
+
+  /* Tulostus: näytetään vain itse sukupuu-SVG, ei sivupalkkia/yläpalkkia/paneeleja
+     eikä puiden navigointinuolia (nav-arrow). */
+  @media print{
+    body.printing #topbar, body.printing #sidebar, body.printing #editorPanel,
+    body.printing #treeControlsPanel, body.printing #treeControlsToggle,
+    body.printing .zoom-controls, body.printing #modalOverlay, body.printing #textExpandOverlay,
+    body.printing #emptyState{
+      display:none !important;
+    }
+    body.printing .nav-arrow{ display:none !important; }
+    body.printing #main{ display:block !important; }
+    body.printing #treeWrap{
+      position:static !important; width:100% !important; height:auto !important;
+      overflow:visible !important; background:#fff !important;
+    }
+    body.printing #treeSvg{ width:100% !important; height:auto !important; cursor:default !important; }
+  }
 </style>
 </head>
 <body>
@@ -263,6 +281,16 @@
     <button id="btnSaveFile" title="Tallenna tiedostoon">💾 Tallenna</button>
     <button id="btnSaveAs" title="Tallenna nimellä">Tallenna nimellä…</button>
     <button id="btnOpenFile" title="Avaa tiedosto">📂 Avaa</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnImportGedcom" title="Tuo GEDCOM-tiedosto (.ged)">⬇ Tuo GEDCOM</button>
+    <button id="btnExportGedcom" title="Vie GEDCOM-tiedostoksi (.ged)">⬆ Vie GEDCOM</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnPrintTree" title="Tulosta näkyvä sukupuu">🖨 Tulosta</button>
+    <button id="btnClearTree" title="Tyhjennä koko sukupuu ja aloita uusi">🗑 Tyhjennä sukupuu</button>
   </div>
   <div class="sep"></div>
   <div class="grp">
@@ -356,10 +384,12 @@
         <div><label>Etunimi(et)</label><input id="f-etunimi"></div>
         <div><label>Syntymäsukunimi</label><input id="f-sukunimi"></div>
         <div class="full"><label>Sukunimi kuollessa <span class="muted">(jos eri kuin syntymäsukunimi)</span></label><input id="f-sukunimi-kuollessa" placeholder="esim. avioliiton kautta saatu sukunimi"></div>
+        <div class="full"><label>Patronyymi / matronyymi <span class="muted">(esim. Erikinpoika, Juhontytär)</span></label><input id="f-patronyymi" placeholder="esim. Erikinpoika"></div>
         <div class="full"><label>Sukupuussa ja listoissa näytettävä sukunimi</label>
           <select id="f-nimivalinta">
             <option value="synt">Syntymäsukunimi</option>
             <option value="kuollessa">Sukunimi kuollessa</option>
+            <option value="patronyymi">Patronyymi/matronyymi</option>
           </select>
         </div>
         <div><label>Sukupuoli</label>
@@ -522,6 +552,7 @@ function genId(){ return 'p_' + Math.random().toString(36).slice(2,10) + Date.no
 function displaySukunimi(p){
   if(!p) return '';
   if(p.nimiValinta==='kuollessa' && p.sukunimiKuollessa) return p.sukunimiKuollessa;
+  if(p.nimiValinta==='patronyymi' && p.patronyymi) return p.patronyymi;
   return p.sukunimi||'';
 }
 function fullName(p){
@@ -789,6 +820,413 @@ function setFileStatus(msg){
 }
 
 /* ---------------------------------------------------------------------
+   SUKUPUUN TYHJENNYS (uuden sukupuun aloitus)
+--------------------------------------------------------------------- */
+function clearTree(){
+  showModal(
+    'Tyhjennä sukupuu',
+    '<p>Tämä poistaa <strong>kaikki</strong> henkilöt, suhteet ja tapahtumat nykyisestä sukupuusta ja aloittaa täysin tyhjästä. Toimintoa ei voi perua.</p><p>Jos et ole vielä tallentanut nykyistä sukupuuta tiedostoon, tiedot katoavat pysyvästi.</p>',
+    ()=>{
+      state = { treeName: 'Sukupuu', persons: [], unions: [], events: [] };
+      ui.selectedPersonId = null;
+      ui.rootId = null;
+      ui.fileHandle = null;
+      ui.panX = 0; ui.panY = 0; ui.zoom = 1;
+      closeEditor();
+      try{ localStorage.removeItem('sukupuu_autobackup'); }catch(e){/* ohitetaan */}
+      syncUiControlsFromState();
+      setFileStatus('Ei tallennettua tiedostoa');
+      refreshAll();
+    }
+  );
+}
+
+/* ---------------------------------------------------------------------
+   GEDCOM-TUONTI JA -VIENTI
+--------------------------------------------------------------------- */
+const GEDCOM_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+/* Suomalainen pvm.kk.vvvv (tai kk.vvvv, vvvv) -> GEDCOM-päivämäärä (esim. "12 JAN 1950"). */
+function finDateToGedcom(pvm){
+  if(!pvm) return '';
+  const s = String(pvm).trim();
+  if(!s) return '';
+  let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{3,4})$/);
+  if(m){
+    const mon = GEDCOM_MONTHS[parseInt(m[2],10)-1];
+    if(mon) return `${m[1].padStart(2,'0')} ${mon} ${m[3]}`;
+  }
+  m = s.match(/^(\d{1,2})\.(\d{3,4})$/);
+  if(m){
+    const mon = GEDCOM_MONTHS[parseInt(m[1],10)-1];
+    if(mon) return `${mon} ${m[2]}`;
+  }
+  m = s.match(/^(\d{3,4})$/);
+  if(m) return m[1];
+  return s; // tuntematon muoto - viedään sellaisenaan (GEDCOM DATE sallii myös vapaan tekstin)
+}
+
+/* GEDCOM-päivämäärä -> suomalainen pvm.kk.vvvv (tai kk.vvvv, vvvv). Säilyttää ABT/EST/BEF/AFT-etuliitteet. */
+function gedcomDateToFin(g){
+  if(!g) return '';
+  let s = String(g).trim();
+  if(!s) return '';
+  let prefix = '';
+  const pm = s.match(/^(ABT|EST|CAL|BEF|AFT)\s+(.*)$/i);
+  if(pm){ prefix = pm[1].toUpperCase()+' '; s = pm[2]; }
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{3,4})$/);
+  if(m){
+    const monIdx = GEDCOM_MONTHS.indexOf(m[2].toUpperCase());
+    if(monIdx>=0) return prefix + `${parseInt(m[1],10)}.${monIdx+1}.${m[3]}`;
+  }
+  m = s.match(/^([A-Za-z]{3})\s+(\d{3,4})$/);
+  if(m){
+    const monIdx = GEDCOM_MONTHS.indexOf(m[1].toUpperCase());
+    if(monIdx>=0) return prefix + `${monIdx+1}.${m[2]}`;
+  }
+  m = s.match(/^(\d{3,4})$/);
+  if(m) return prefix + m[1];
+  return prefix + s;
+}
+
+/* Muodostaa yhden tai useamman GEDCOM-rivin annetusta arvosta; pilkkoo rivinvaihdot CONT-riveiksi
+   ja ylipitkät (yli 200 merkkiä) rivit CONC-jatkoriveiksi. */
+function gedLines(level, tag, value){
+  const out = [];
+  const val = (value===undefined||value===null) ? '' : String(value);
+  if(!val){ out.push(`${level} ${tag}`); return out; }
+  const parts = val.split('\n');
+  parts.forEach((part, idx)=>{
+    let chunk = part;
+    if(idx===0){
+      out.push(`${level} ${tag}${chunk?(' '+chunk.slice(0,200)):''}`);
+      chunk = chunk.slice(200);
+    } else {
+      out.push(`${level+1} CONT${chunk?(' '+chunk.slice(0,200)):''}`);
+      chunk = chunk.slice(200);
+    }
+    while(chunk.length){
+      out.push(`${level+1} CONC ${chunk.slice(0,200)}`);
+      chunk = chunk.slice(200);
+    }
+  });
+  return out;
+}
+
+function gedcomSex(p){
+  if(p.sukupuoli==='mies') return 'M';
+  if(p.sukupuoli==='nainen') return 'F';
+  return 'U';
+}
+
+/* Varmistaa, että jokaiselle perheelle merkitään tasan yksi HUSB ja yksi WIFE (kun kaksi
+   vanhempaa tunnetaan). GEDCOM FAM -tietue sallii rakenteellisesti vain yhden HUSB- ja yhden
+   WIFE-rivin: jos kumpikin vanhempi saisi saman tunnisteen (esim. molemmat HUSB, koska
+   sukupuoli on tuntematon), jälkimmäinen rivi ylikirjoittaisi tuonnissa ensimmäisen ja toinen
+   vanhempi katoaisi puusta kokonaan. Sukupuoli ratkaisee roolin kun se tunnetaan; muutoin
+   roolit jaetaan silti aina kahdelle eri tunnisteelle henkilöiden järjestyksen mukaan. */
+function assignFamRoles(parentIds){
+  if(parentIds.length <= 1){
+    return parentIds.map(pid=>{
+      const person = personById(pid);
+      return { pid, tag: (person && person.sukupuoli==='nainen') ? 'WIFE' : 'HUSB' };
+    });
+  }
+  const [a,b] = parentIds;
+  const pa = personById(a), pb = personById(b);
+  if(pa && pa.sukupuoli==='nainen' && !(pb && pb.sukupuoli==='nainen')){
+    return [{pid:b, tag:'HUSB'}, {pid:a, tag:'WIFE'}];
+  }
+  if(pb && pb.sukupuoli==='nainen' && !(pa && pa.sukupuoli==='nainen')){
+    return [{pid:a, tag:'HUSB'}, {pid:b, tag:'WIFE'}];
+  }
+  // Molemmat naisia, molemmat miehiä, tai sukupuoli tuntematon: silti kaksi ERI tunnistetta,
+  // jottei kumpikaan vanhempi katoa tuonnissa.
+  return [{pid:a, tag:'HUSB'}, {pid:b, tag:'WIFE'}];
+}
+
+function exportGedcom(){
+  const lines = [];
+  lines.push('0 HEAD');
+  lines.push('1 SOUR Sukupuu');
+  lines.push('1 GEDC');
+  lines.push('2 VERS 5.5.1');
+  lines.push('2 FORM LINEAGE-LINKED');
+  lines.push('1 CHAR UTF-8');
+  lines.push(...gedLines(1, 'NOTE', 'Viety Sukupuu-sovelluksesta: ' + (state.treeName||'Sukupuu')));
+
+  const indiRef = {};
+  state.persons.forEach((p,i)=>{ indiRef[p.id] = '@I'+(i+1)+'@'; });
+
+  // Perheet: ensisijaisesti state.unions, lisäksi mahdolliset yhden/kahden vanhemman
+  // vanhempisuhteet joille ei ole erillistä liitto-tietuetta.
+  const famKeyOf = ids => ids.slice().sort().join('|');
+  const families = {}; // key -> {parentIds:[...], union, childIds:[...]}
+  state.unions.forEach(u=>{
+    const key = famKeyOf(u.personIds);
+    families[key] = { parentIds: u.personIds.slice(), union: u, childIds: [] };
+  });
+  state.persons.forEach(p=>{
+    if(!p.parentIds || !p.parentIds.length) return;
+    const key = famKeyOf(p.parentIds);
+    if(!families[key]) families[key] = { parentIds: p.parentIds.slice(), union: null, childIds: [] };
+    families[key].childIds.push(p.id);
+  });
+  const famRef = {};
+  Object.keys(families).forEach((key,i)=>{ famRef[key] = '@F'+(i+1)+'@'; });
+
+  state.persons.forEach(p=>{
+    lines.push(`0 ${indiRef[p.id]} INDI`);
+    const given = p.etunimi||'';
+    const surnameDisplay = displaySukunimi(p);
+    lines.push(...gedLines(1,'NAME', `${given} /${surnameDisplay}/`));
+    if(given) lines.push(...gedLines(2,'GIVN', given));
+    if(p.sukunimi) lines.push(...gedLines(2,'SURN', p.sukunimi));
+    lines.push(`1 SEX ${gedcomSex(p)}`);
+    if(p.syntAika || p.syntPaikka){
+      lines.push('1 BIRT');
+      if(p.syntAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.syntAika)));
+      if(p.syntPaikka) lines.push(...gedLines(2,'PLAC', p.syntPaikka));
+    }
+    if(p.kuolAika || p.kuolPaikka){
+      lines.push('1 DEAT');
+      if(p.kuolAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.kuolAika)));
+      if(p.kuolPaikka) lines.push(...gedLines(2,'PLAC', p.kuolPaikka));
+    }
+    if(p.hautaAika || p.hautaPaikka){
+      lines.push('1 BURI');
+      if(p.hautaAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.hautaAika)));
+      if(p.hautaPaikka) lines.push(...gedLines(2,'PLAC', p.hautaPaikka));
+    }
+    if(p.ammatti) lines.push(...gedLines(1,'OCCU', p.ammatti));
+    if(p.kuvaus) lines.push(...gedLines(1,'NOTE', p.kuvaus));
+    if(p.yDna) lines.push(...gedLines(1,'_YDNA', p.yDna));
+    if(p.mtDna) lines.push(...gedLines(1,'_MTDNA', p.mtDna));
+    if(p.sukunimiKuollessa) lines.push(...gedLines(1,'_SURN_KUOLLESSA', p.sukunimiKuollessa));
+    if(p.patronyymi) lines.push(...gedLines(1,'_PATRONYYMI', p.patronyymi));
+    if(p.nimiValinta) lines.push(...gedLines(1,'_NIMIVALINTA', p.nimiValinta));
+    (p.customFields||[]).forEach(cf=>{
+      if(cf.avain || cf.arvo) lines.push(...gedLines(1,'NOTE', `${cf.avain||''}: ${cf.arvo||''}`));
+    });
+    if(p.parentIds && p.parentIds.length){
+      const key = famKeyOf(p.parentIds);
+      if(famRef[key]) lines.push(`1 FAMC ${famRef[key]}`);
+    }
+    Object.keys(families).forEach(key=>{
+      if(families[key].parentIds.includes(p.id)) lines.push(`1 FAMS ${famRef[key]}`);
+    });
+  });
+
+  Object.keys(families).forEach(key=>{
+    const fam = families[key];
+    lines.push(`0 ${famRef[key]} FAM`);
+    assignFamRoles(fam.parentIds).forEach(({pid,tag})=>{
+      if(indiRef[pid]) lines.push(`1 ${tag} ${indiRef[pid]}`);
+    });
+    fam.childIds.forEach(cid=>{ if(indiRef[cid]) lines.push(`1 CHIL ${indiRef[cid]}`); });
+    if(fam.union){
+      lines.push('1 MARR');
+      if(fam.union.tyyppi && fam.union.tyyppi!=='avioliitto') lines.push(...gedLines(2,'TYPE', fam.union.tyyppi));
+      if(fam.union.alkoi) lines.push(...gedLines(2,'DATE', finDateToGedcom(fam.union.alkoi)));
+      if(fam.union.paikka) lines.push(...gedLines(2,'PLAC', fam.union.paikka));
+      if(fam.union.paattyi) lines.push(...gedLines(2,'_END_DATE', finDateToGedcom(fam.union.paattyi)));
+    }
+  });
+
+  lines.push('0 TRLR');
+  const gedText = lines.join('\r\n') + '\r\n';
+  const blob = new Blob([gedText], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.treeName||'sukupuu').replace(/[^a-zA-Z0-9äöåÄÖÅ_ -]/g,'').trim() || 'sukupuu';
+  a.href = url; a.download = safeName + '.ged';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+/* Jäsentää raa'an .ged-tiedoston sisällön GEDCOM-tietueiksi: [{level, tag, xref, value}] */
+function parseGedcomLines(text){
+  const rawLines = text.split(/\r\n|\r|\n/);
+  const records = [];
+  rawLines.forEach(raw=>{
+    if(!raw.trim()) return;
+    const m = raw.match(/^\s*(\d+)\s+(@[^@]+@\s+)?([A-Za-z_][A-Za-z0-9_]*)\s?(.*)$/);
+    if(!m) return;
+    const level = parseInt(m[1],10);
+    const xref = m[2] ? m[2].trim() : null;
+    const tag = m[3];
+    const value = m[4]||'';
+    if(tag==='CONT' && records.length){ records[records.length-1].value += '\n' + value; return; }
+    if(tag==='CONC' && records.length){ records[records.length-1].value += value; return; }
+    records.push({level, tag, xref, value});
+  });
+  return records;
+}
+
+function importGedcomText(text){
+  const records = parseGedcomLines(text);
+  const persons = [];
+  const unions = [];
+  const personByXref = {};
+  const famByXref = {};
+
+  let i = 0;
+  while(i < records.length){
+    const rec = records[i];
+    if(rec.level===0 && rec.xref && rec.tag==='INDI'){
+      const p = blankPerson();
+      p.id = genId();
+      personByXref[rec.xref] = { person: p, famc: [], fams: [] };
+      let j = i+1;
+      let nameSet = false;
+      while(j < records.length && records[j].level > 0){
+        const r = records[j];
+        if(r.level===1){
+          if(r.tag==='NAME' && !nameSet){
+            const nm = r.value.match(/^([^\/]*)\/([^\/]*)\/?\s*$/);
+            if(nm){ p.etunimi = nm[1].trim(); p.sukunimi = nm[2].trim(); }
+            else { p.etunimi = r.value.trim(); }
+            // GIVN/SURN ovat NAME:n alitageja (yksi taso syvemmällä) ja ovat AINA ensisijaisia
+            // NAME-rivin sukunimiosaan nähden, koska NAME:n sukunimiosa saattaa (nimiValinta-
+            // asetuksen mukaan) näyttää kuolinajan sukunimeä tai patronyymiä syntymäsukunimen
+            // sijaan - vain SURN on aina täsmälleen syntymäsukunimi.
+            let k = j+1;
+            while(k < records.length && records[k].level > r.level){
+              if(records[k].tag==='GIVN') p.etunimi = records[k].value.trim();
+              if(records[k].tag==='SURN') p.sukunimi = records[k].value.trim();
+              k++;
+            }
+            j = k-1;
+            nameSet = true;
+          } else if(r.tag==='SEX'){
+            p.sukupuoli = r.value.trim()==='M' ? 'mies' : (r.value.trim()==='F' ? 'nainen' : '');
+          } else if(r.tag==='OCCU'){
+            p.ammatti = r.value.trim();
+          } else if(r.tag==='NOTE'){
+            p.kuvaus = p.kuvaus ? (p.kuvaus + '\n' + r.value) : r.value;
+          } else if(r.tag==='_YDNA'){
+            p.yDna = r.value.trim();
+          } else if(r.tag==='_MTDNA'){
+            p.mtDna = r.value.trim();
+          } else if(r.tag==='_SURN_KUOLLESSA'){
+            p.sukunimiKuollessa = r.value.trim();
+          } else if(r.tag==='_PATRONYYMI'){
+            p.patronyymi = r.value.trim();
+          } else if(r.tag==='_NIMIVALINTA'){
+            p.nimiValinta = r.value.trim();
+          } else if(r.tag==='FAMC'){
+            personByXref[rec.xref].famc.push(r.value.trim());
+          } else if(r.tag==='FAMS'){
+            personByXref[rec.xref].fams.push(r.value.trim());
+          } else if(r.tag==='BIRT' || r.tag==='DEAT' || r.tag==='BURI'){
+            let k = j+1;
+            let date='', plac='';
+            while(k < records.length && records[k].level > 1){
+              if(records[k].tag==='DATE') date = gedcomDateToFin(records[k].value);
+              if(records[k].tag==='PLAC') plac = records[k].value.trim();
+              k++;
+            }
+            if(r.tag==='BIRT'){ p.syntAika = date; p.syntPaikka = plac; }
+            else if(r.tag==='DEAT'){ p.kuolAika = date; p.kuolPaikka = plac; }
+            else { p.hautaAika = date; p.hautaPaikka = plac; }
+            j = k-1;
+          }
+        }
+        j++;
+      }
+      persons.push(p);
+      i = j;
+      continue;
+    }
+    if(rec.level===0 && rec.xref && rec.tag==='FAM'){
+      const fam = { husb:null, wife:null, chil:[], marr:null };
+      famByXref[rec.xref] = fam;
+      let j = i+1;
+      while(j < records.length && records[j].level > 0){
+        const r = records[j];
+        if(r.level===1){
+          if(r.tag==='HUSB'){
+            // Puolustava varalta: GEDCOM sallii vain yhden HUSB-rivin per perhe, mutta jos
+            // tiedostossa (esim. muun ohjelman viemänä) niitä olisi silti kaksi, ei toista
+            // vanhempaa haluta hiljaisesti hukata - sijoitetaan ylimääräinen wife-paikalle.
+            if(!fam.husb) fam.husb = r.value.trim();
+            else if(!fam.wife) fam.wife = r.value.trim();
+          }
+          else if(r.tag==='WIFE'){
+            if(!fam.wife) fam.wife = r.value.trim();
+            else if(!fam.husb) fam.husb = r.value.trim();
+          }
+          else if(r.tag==='CHIL') fam.chil.push(r.value.trim());
+          else if(r.tag==='MARR'){
+            const marr = {tyyppi:'avioliitto', alkoi:'', paikka:'', paattyi:''};
+            let k = j+1;
+            while(k < records.length && records[k].level > 1){
+              if(records[k].tag==='DATE') marr.alkoi = gedcomDateToFin(records[k].value);
+              if(records[k].tag==='PLAC') marr.paikka = records[k].value.trim();
+              if(records[k].tag==='TYPE') marr.tyyppi = records[k].value.trim();
+              if(records[k].tag==='_END_DATE') marr.paattyi = gedcomDateToFin(records[k].value);
+              k++;
+            }
+            fam.marr = marr;
+            j = k-1;
+          }
+        }
+        j++;
+      }
+      i = j;
+      continue;
+    }
+    i++;
+  }
+
+  // Perheiden puolisot -> unions
+  Object.keys(famByXref).forEach((fx,idx)=>{
+    const fam = famByXref[fx];
+    const ids = [fam.husb, fam.wife].filter(Boolean).map(x=>personByXref[x] && personByXref[x].person.id).filter(Boolean);
+    if(ids.length===2){
+      const m = fam.marr || {tyyppi:'avioliitto', alkoi:'', paikka:'', paattyi:''};
+      unions.push({ id: genId(), personIds: ids, tyyppi: m.tyyppi||'avioliitto', alkoi:m.alkoi||'', paikka:m.paikka||'', paattyi:m.paattyi||'', huomiot:'' });
+    }
+    fam._husbId = ids[0] && fam.husb ? (personByXref[fam.husb]&&personByXref[fam.husb].person.id) : null;
+    fam._wifeId = fam.wife ? (personByXref[fam.wife]&&personByXref[fam.wife].person.id) : null;
+  });
+
+  // Lasten vanhempisuhteet FAMC-viittausten kautta
+  Object.keys(personByXref).forEach(xref=>{
+    const entry = personByXref[xref];
+    if(!entry.famc.length) return;
+    const fam = famByXref[entry.famc[0]];
+    if(!fam) return;
+    const parentIds = [];
+    if(fam.husb && personByXref[fam.husb]) parentIds.push(personByXref[fam.husb].person.id);
+    if(fam.wife && personByXref[fam.wife]) parentIds.push(personByXref[fam.wife].person.id);
+    entry.person.parentIds = parentIds;
+  });
+
+  if(!persons.length){ throw new Error('Tiedostosta ei löytynyt yhtään henkilöä (INDI-tietuetta).'); }
+
+  return { treeName: 'Tuotu GEDCOM-sukupuu', persons, unions, events: [] };
+}
+
+function importGedcom(text, fileLabel){
+  try{
+    const data = importGedcomText(text);
+    state = data;
+    ui.selectedPersonId = null;
+    ui.rootId = state.persons[0] ? state.persons[0].id : null;
+    ui.fileHandle = null;
+    closeEditor();
+    syncUiControlsFromState();
+    autoBackup();
+    refreshAll();
+    setFileStatus('Tuotu GEDCOM-tiedostosta' + (fileLabel ? (': '+fileLabel) : ''));
+  }catch(err){
+    console.error(err);
+    alert('GEDCOM-tiedoston tuonti epäonnistui: ' + err.message);
+  }
+}
+
+/* ---------------------------------------------------------------------
    MODAALI (yksinkertainen valinta-/lisäysikkuna)
 --------------------------------------------------------------------- */
 function showModal(title, bodyHtml, onOk){
@@ -1028,55 +1466,168 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
   const ids = Object.keys(gen);
   if(!ids.length) return {nodes:[], links:[]};
 
-  // ryhmittele sukupolvittain, järjestä perheittäin (puolisot vierekkäin, sisarukset yhdessä)
-  const byGen = {};
-  ids.forEach(id=>{
-    const g = gen[id];
-    (byGen[g] = byGen[g]||[]).push(id);
+  // gen-akseli (sukupolvien suunta) / sib-akseli (sisarusten suunta) riippuen suunnasta
+  const genSize = orientation === 'vertical' ? NODE_H : NODE_W;
+  const sibSize = orientation === 'vertical' ? NODE_W : NODE_H;
+  const genUnit = genSize + GEN_GAP;
+  const sibUnit = sibSize + SIB_GAP;
+  function pt(genVal, sibVal){ return orientation === 'vertical' ? {x:sibVal, y:genVal} : {x:genVal, y:sibVal}; }
+
+  // ---------------------------------------------------------------------
+  // Keskitetty, symmetrinen sijoittelu: lähtöhenkilö (juuri) on aina tarkalleen
+  // sib-akselin nollakohdassa, hänen esivanhempansa keskittyvät symmetrisesti
+  // hänen oman sijaintinsa ylä-/taakse-puolelle sukupolvi kerrallaan, ja hänen
+  // jälkeläisensä keskittyvät (puolisonsa kanssa) hänen alapuolelleen. Puu ei
+  // enää "ajaudu" sivuun, koska joka haara lasketaan aina suhteessa juureen,
+  // ei rivin sisäisenä juoksevana indeksinä.
+  const sibPos = {};
+  const positioned = new Set();
+  const memoDescW = new Map();
+
+  function primarySpouseOf(id){
+    const sps = spousesOf(id).filter(({person:sp})=>sp && sp.id in gen && gen[sp.id]===gen[id]);
+    return sps.length ? sps[0].person.id : null;
+  }
+  function visibleChildrenOf(id){
+    return childrenOf(id).filter(c=>c.id in gen && gen[c.id]===gen[id]+1);
+  }
+  function visibleParentsOf(id){
+    return (personById(id).parentIds||[]).filter(pid=>pid in gen && gen[pid]===gen[id]-1);
+  }
+
+  function descendantWidth(id){
+    if(memoDescW.has(id)) return memoDescW.get(id);
+    memoDescW.set(id, 1); // suoja mahdollisia poikkeustapauksia vastaan
+    const sp = primarySpouseOf(id);
+    const own = sp ? 2 : 1;
+    const kids = visibleChildrenOf(id);
+    const w = kids.length ? Math.max(own, kids.reduce((s,c)=>s+descendantWidth(c.id),0)) : own;
+    memoDescW.set(id, w);
+    return w;
+  }
+  // Esivanhempien sijoittelu tehdään ERI menetelmällä kuin jälkeläisten: sen sijaan,
+  // että jokainen esivanhempi keskitettäisiin oman (leveyspainotetun) "siivunsa"
+  // keskelle - mikä ajautuu vinoon heti kun toisen puolen sukuhaara on huomattavasti
+  // syvempi/leveämpi kuin toisen - jokainen esivanhempi (isä/äiti) asetetaan aina
+  // TARKALLEEN oman kahden vanhempansa keskiarvoon. "Lehti"-esivanhemmille (joiden omia
+  // vanhempia ei tunneta) annetaan juokseva kokonaislukupaikka syvyyssuuntaisessa
+  // (isä ensin, äiti sitten) järjestyksessä. Tämä takaa MATEMAATTISESTI, että jokainen
+  // pariskunta on aina tarkalleen keskitetty oman lapsensa yläpuolelle - myös silloin
+  // kun toisen puolison sukuhaara on tuntematon/matala ja toisen hyvin syvä - eikä
+  // päällekkäisyyksiä synny, koska jokainen sukuhaara saa oman, muista erillisen,
+  // yhtenäisen "lehtialueensa".
+  function computeAncestorRaw(id, counterRef, rawX){
+    const parents = visibleParentsOf(id);
+    let x;
+    if(parents.length===0){
+      x = counterRef.n; counterRef.n += 1;
+    } else if(parents.length===1){
+      x = computeAncestorRaw(parents[0], counterRef, rawX);
+    } else {
+      const orderedIds = orderedParentIds(personById(id)).filter(pid=>parents.includes(pid));
+      const [p1,p2] = orderedIds.length===2 ? orderedIds : parents;
+      const x1 = computeAncestorRaw(p1, counterRef, rawX);
+      const x2 = computeAncestorRaw(p2, counterRef, rawX);
+      x = (x1+x2)/2;
+    }
+    rawX[id] = x;
+    return x;
+  }
+
+  // Jälkeläiset: sijoittaa henkilön 'id' (ja hänen puolisonsa, jos näkyvissä)
+  // keskitetysti annettuun sib-keskikohtaan, ja jatkaa rekursiivisesti lapsiin.
+  function positionDescendants(id, sibCenter){
+    if(positioned.has(id)) return;
+    const sp = primarySpouseOf(id);
+    const hasSp = sp && !positioned.has(sp);
+    // Törmäyksen esto: jos tälle riville on jo sijoitettu joku toinen (esim. varasijoittelusta
+    // kaskadoitunut haara osuisi muutoin päällekkäin toisen suvunhaaran kanssa), siirretään
+    // koko keskikohtaa oikealle kunnes tila on vapaa. Juuren/kantalinjan ensisijaisessa
+    // sijoittelussa tätä riviä ei vielä ole muilla varattu, joten tämä ei muuta niiden tulosta.
+    let center = sibCenter;
+    const minGap = hasSp ? sibUnit*1.4 : sibUnit*0.9;
+    let tries = 0;
+    while(true){
+      const rowNodes = ids.filter(other=>gen[other]===gen[id] && positioned.has(other) && other!==id && other!==sp);
+      if(!rowNodes.some(other=>Math.abs(sibPos[other]-center) < minGap) || tries>=300) break;
+      center += sibUnit; tries++;
+    }
+    if(hasSp){
+      sibPos[id] = center - sibUnit/2; positioned.add(id);
+      sibPos[sp] = center + sibUnit/2; positioned.add(sp);
+    } else {
+      sibPos[id] = center; positioned.add(id);
+    }
+    layoutChildrenOf(id, center);
+  }
+  function layoutChildrenOf(id, anchorCenter){
+    const kids = visibleChildrenOf(id).filter(c=>!positioned.has(c.id));
+    if(!kids.length) return;
+    const totalW = kids.reduce((s,c)=>s+descendantWidth(c.id),0);
+    let cursor = anchorCenter - totalW*sibUnit/2;
+    kids.forEach(c=>{
+      const w = descendantWidth(c.id);
+      positionDescendants(c.id, cursor + w*sibUnit/2);
+      cursor += w*sibUnit;
+    });
+  }
+
+  // 1) Juuri aina tarkalleen sib=0, puoliso (jos näkyvissä) heti hänen vierelleen,
+  //    lapset keskitetään pariskunnan (tai pelkän juuren) keskikohdan alle.
+  positionDescendants(rootId, 0);
+  // positionDescendants keskittää PARISKUNNAN (juuri+puoliso) ympäri annetun kohdan -
+  // jolloin juuri itse voi päätyä hieman sivuun (esim. -87 jos puoliso viedään +87).
+  // Siirretään koko jo sijoitettu joukko (juuri+puoliso+heidän jälkeläisensä) jäykkänä
+  // kokonaisuutena niin että JUURI päätyy tarkalleen sib=0:aan, puolison etäisyyden
+  // juuresta säilyessä silti ennallaan.
+  const rootShift = 0 - sibPos[rootId];
+  if(rootShift){
+    positioned.forEach(id=>{ sibPos[id] += rootShift; });
+  }
+
+  // 2) Juuren omat esivanhemmat: laske ensin koko esivanhempipuun raa'at sib-arvot
+  //    (juuri mukaan lukien, ks. yllä), ja siirrä koko joukko niin että juuren oma
+  //    laskettu arvo osuu tarkalleen sen jo kiinnitettyyn pikselisijaintiin (0).
+  const ancestorRawX = {};
+  computeAncestorRaw(rootId, {n:0}, ancestorRawX);
+  const ancestorShift = sibPos[rootId] - ancestorRawX[rootId]*sibUnit;
+  Object.keys(ancestorRawX).forEach(id=>{
+    if(positioned.has(id)) return; // juuri itse on jo kiinnitetty
+    sibPos[id] = ancestorRawX[id]*sibUnit + ancestorShift;
+    positioned.add(id);
   });
 
-  const positions = {}; // id -> {gen, idx}
-  const genKeys = Object.keys(byGen).map(Number).sort((a,b)=>a-b);
-
-  genKeys.forEach(g=>{
-    const list = byGen[g];
-    // järjestä: pidä puolisot vierekkäin
-    const ordered = [];
-    const used = new Set();
-    list.forEach(id=>{
-      if(used.has(id)) return;
-      ordered.push(id); used.add(id);
-      spousesOf(id).forEach(({person:sp})=>{
-        if(sp && list.includes(sp.id) && !used.has(sp.id)){
-          ordered.push(sp.id); used.add(sp.id);
-        }
-      });
-    });
-    ordered.forEach((id,idx)=>{ positions[id] = {gen:g, idx}; });
+  // 3) Varasijoittelu lopuille näkyville henkilöille, joita pääalgoritmi ei tavoittanut
+  //    (esim. esivanhemman sisarukset "Piilota sisarukset" pois päältä, tai ylimääräiset
+  //    kumppanit kun "Piilota muut kumppanit" ei ole päällä). Pyritään sijoittamaan lähelle
+  //    jo tunnettua sukulaista/kumppania samalla rivillä, törmäyksiä välttäen.
+  const remaining = ids.filter(id=>!positioned.has(id)).sort((a,b)=>gen[a]-gen[b]);
+  remaining.forEach(id=>{
+    if(positioned.has(id)) return;
+    const p = personById(id);
+    const candidates = [];
+    spousesOf(id).forEach(({person:sp})=>{ if(sp && positioned.has(sp.id) && gen[sp.id]===gen[id]) candidates.push(sibPos[sp.id]+sibUnit); });
+    (p.parentIds||[]).forEach(pid=>{ if(positioned.has(pid) && gen[pid]===gen[id]-1) candidates.push(sibPos[pid]); });
+    visibleChildrenOf(id).forEach(c=>{ if(positioned.has(c.id)) candidates.push(sibPos[c.id]); });
+    let center = candidates.length ? candidates[0] : 0;
+    const rowPositioned = ids.filter(other=>gen[other]===gen[id] && positioned.has(other));
+    let tries = 0;
+    while(rowPositioned.some(other=>Math.abs(sibPos[other]-center) < sibUnit*0.9) && tries<300){ center += sibUnit; tries++; }
+    sibPos[id] = center; positioned.add(id);
+    layoutChildrenOf(id, center);
   });
 
   const nodes = ids.map(id=>{
-    const pos = positions[id];
-    let x, y;
-    if(orientation === 'vertical'){
-      x = pos.idx * (NODE_W + SIB_GAP);
-      y = pos.gen * (NODE_H + GEN_GAP);
-    } else {
-      x = pos.gen * (NODE_W + GEN_GAP);
-      y = pos.idx * (NODE_H + SIB_GAP);
-    }
+    const genVal = gen[id] * genUnit;
+    const {x, y} = pt(genVal, sibPos[id] || 0);
     return {id, x, y, person: personById(id)};
   });
 
   const nodeById = {};
   nodes.forEach(n=>nodeById[n.id]=n);
 
-  // gen-akseli (sukupolvien suunta) / sib-akseli (sisarusten suunta) riippuen suunnasta
-  const genSize = orientation === 'vertical' ? NODE_H : NODE_W;
-  const sibSize = orientation === 'vertical' ? NODE_W : NODE_H;
   function genOf(n){ return orientation === 'vertical' ? n.y : n.x; }
   function sibOf(n){ return orientation === 'vertical' ? n.x : n.y; }
-  function pt(genVal, sibVal){ return orientation === 'vertical' ? {x:sibVal, y:genVal} : {x:genVal, y:sibVal}; }
 
   const links = [];
 
@@ -1431,7 +1982,30 @@ function fitToView(){
       maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+NODE_H);
     });
   }
-  const treeW = Math.max(1, maxX-minX), treeH = Math.max(1, maxY-minY);
+  let treeW = Math.max(1, maxX-minX), treeH = Math.max(1, maxY-minY);
+  let centerX = (minX+maxX)/2, centerY = (minY+maxY)/2;
+
+  // Keskitetään näkymä aina LÄHTÖHENKILÖN (juuren) omaan sijaintiin sisarus-/sivuttais-
+  // akselilla sen sijaan, että koko puun bounding boxin painopiste määräisi keskityksen -
+  // muuten näkymä "ajautuu" sivuun heti kun toinen sukuhaara on huomattavasti toista
+  // leveämpi/syvempi (esim. toisen puolison esivanhempia ei tunneta). Lasketaan juuren
+  // ympärille symmetrinen, peilattu kehys skaalausta varten, jotta mikään puun osa ei
+  // silti jää näkymän ulkopuolelle.
+  if(ui.orientation === 'vertical' || ui.orientation === 'horizontal'){
+    const rootNode = lastLayoutNodes.find(n=>n.id === ui.rootId);
+    if(rootNode){
+      if(ui.orientation === 'vertical'){
+        const rootCx = rootNode.x + NODE_W/2;
+        const halfW = Math.max(rootCx - minX, maxX - rootCx, NODE_W/2);
+        centerX = rootCx; treeW = Math.max(treeW, halfW*2);
+      } else {
+        const rootCy = rootNode.y + NODE_H/2;
+        const halfH = Math.max(rootCy - minY, maxY - rootCy, NODE_H/2);
+        centerY = rootCy; treeH = Math.max(treeH, halfH*2);
+      }
+    }
+  }
+
   const pad = 60;
   const availW = Math.max(100, rect.width - pad*2);
   const availH = Math.max(100, rect.height - pad*2);
@@ -1439,9 +2013,54 @@ function fitToView(){
   if(!isFinite(scale) || scale<=0) scale = 1;
   scale = Math.max(0.12, scale);
   ui.zoom = scale;
-  ui.panX = (rect.width - treeW*scale)/2 - minX*scale;
-  ui.panY = (rect.height - treeH*scale)/2 - minY*scale;
+  ui.panX = rect.width/2 - centerX*scale;
+  ui.panY = rect.height/2 - centerY*scale;
   applyTransform();
+}
+
+/* ---------------------------------------------------------------------
+   TULOSTUS
+--------------------------------------------------------------------- */
+function printTree(){
+  const hasContent = ui.orientation === 'fan' ? !!lastFanBounds : lastLayoutNodes.length>0;
+  if(!hasContent){ alert('Ei tulostettavaa sukupuuta - valitse ensin lähtöhenkilö.'); return; }
+
+  const svg = document.getElementById('treeSvg');
+  const viewport = document.getElementById('viewport');
+  let minX,minY,maxX,maxY;
+  if(ui.orientation === 'fan'){
+    ({minX,minY,maxX,maxY} = lastFanBounds);
+  } else {
+    minX=Infinity; minY=Infinity; maxX=-Infinity; maxY=-Infinity;
+    lastLayoutNodes.forEach(n=>{
+      minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+      maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+NODE_H);
+    });
+  }
+  const pad = 40;
+  const vbX = minX-pad, vbY = minY-pad;
+  const vbW = Math.max(1,(maxX-minX)+pad*2), vbH = Math.max(1,(maxY-minY)+pad*2);
+
+  const prevViewBox = svg.getAttribute('viewBox');
+  const prevTransform = viewport.getAttribute('transform');
+  let restored = false;
+  function restore(){
+    if(restored) return;
+    restored = true;
+    if(prevViewBox) svg.setAttribute('viewBox', prevViewBox); else svg.removeAttribute('viewBox');
+    viewport.setAttribute('transform', prevTransform || '');
+    document.body.classList.remove('printing');
+    window.removeEventListener('afterprint', restore);
+  }
+
+  // Tulostusta varten näytetään koko puu ilman panoroinnin/zoomauksen vaikutusta,
+  // ja piilotetaan käyttöliittymän kehykset sekä nav-arrow-nuolet CSS:llä (body.printing).
+  svg.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+  viewport.setAttribute('transform', 'translate(0,0) scale(1)');
+  document.body.classList.add('printing');
+  window.addEventListener('afterprint', restore);
+  setTimeout(()=>{ window.print(); }, 50);
+  setTimeout(restore, 4000); // varmuuden vuoksi, jos afterprint ei laukea kaikissa selaimissa
 }
 
 /* pan & zoom */
@@ -1516,7 +2135,7 @@ document.addEventListener('fullscreenchange', ()=>{
 --------------------------------------------------------------------- */
 function blankPerson(){
   return {
-    id: genId(), etunimi:'', sukunimi:'', sukunimiKuollessa:'', nimiValinta:'synt', sukupuoli:'', ammatti:'',
+    id: genId(), etunimi:'', sukunimi:'', sukunimiKuollessa:'', patronyymi:'', nimiValinta:'synt', sukupuoli:'', ammatti:'',
     syntAika:'', syntPaikka:'', kuolAika:'', kuolPaikka:'', hautaAika:'', hautaPaikka:'',
     kuvaus:'', valokuva:'', yDna:'', mtDna:'', customFields:[], sourceLinks:[], parentIds:[],
     piilotaPuolisotJaLapset:false, piilotaProfiili:false
@@ -1555,6 +2174,7 @@ function fillEditorFields(){
   document.getElementById('f-etunimi').value = d.etunimi||'';
   document.getElementById('f-sukunimi').value = d.sukunimi||'';
   document.getElementById('f-sukunimi-kuollessa').value = d.sukunimiKuollessa||'';
+  document.getElementById('f-patronyymi').value = d.patronyymi||'';
   document.getElementById('f-nimivalinta').value = d.nimiValinta||'synt';
   document.getElementById('f-hautaaika').value = d.hautaAika||'';
   document.getElementById('f-hautapaikka').value = d.hautaPaikka||'';
@@ -1583,6 +2203,7 @@ function readEditorFieldsIntoDraft(){
   d.etunimi = document.getElementById('f-etunimi').value.trim();
   d.sukunimi = document.getElementById('f-sukunimi').value.trim();
   d.sukunimiKuollessa = document.getElementById('f-sukunimi-kuollessa').value.trim();
+  d.patronyymi = document.getElementById('f-patronyymi').value.trim();
   d.nimiValinta = document.getElementById('f-nimivalinta').value;
   d.hautaAika = document.getElementById('f-hautaaika').value.trim();
   d.hautaPaikka = document.getElementById('f-hautapaikka').value.trim();
@@ -2102,6 +2723,32 @@ document.getElementById('treeControlsClose').addEventListener('click', ()=>{
 document.getElementById('btnSaveFile').addEventListener('click', ()=>saveToFile(false));
 document.getElementById('btnSaveAs').addEventListener('click', ()=>saveToFile(true));
 document.getElementById('btnOpenFile').addEventListener('click', openFromFile);
+document.getElementById('btnClearTree').addEventListener('click', clearTree);
+document.getElementById('btnExportGedcom').addEventListener('click', exportGedcom);
+document.getElementById('btnImportGedcom').addEventListener('click', ()=>{
+  document.getElementById('gedcomImportInput').click();
+});
+document.getElementById('btnPrintTree').addEventListener('click', printTree);
+
+const hiddenGedcomInput = document.createElement('input');
+hiddenGedcomInput.type='file'; hiddenGedcomInput.accept='.ged,text/plain'; hiddenGedcomInput.id='gedcomImportInput';
+hiddenGedcomInput.style.display='none';
+document.body.appendChild(hiddenGedcomInput);
+hiddenGedcomInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const doImport = ()=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{ importGedcom(reader.result, file.name); };
+    reader.readAsText(file, 'UTF-8');
+  };
+  showModal(
+    'Tuo GEDCOM-tiedosto',
+    '<p>Tämä <strong>korvaa</strong> nykyisen sukupuun tiedoston <em>' + escapeHtml(file.name) + '</em> sisällöllä. Jos et ole tallentanut nykyistä sukupuuta, tiedot katoavat.</p>',
+    ()=>{ doImport(); }
+  );
+  hiddenGedcomInput.value='';
+});
 
 /* fallback-tuonti (selaimet ilman File System Access APIa) */
 const hiddenImportInput = document.createElement('input');
