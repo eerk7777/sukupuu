@@ -354,6 +354,9 @@
         <input type="checkbox" id="hideOtherPartnersChk" style="width:auto;">
         <label style="width:auto;">Piilota muut kumppanit</label>
       </div>
+      <div class="muted" id="perfSafeguardHint" style="font-size:11px;line-height:1.4;margin:-4px 0 4px;display:none;">
+        Pakotettu päälle nopeamman piirron vuoksi, koska sukupolvia näytetään yli 2.
+      </div>
     </div>
     <div class="zoom-controls">
       <button id="btnZoomOut">−</button>
@@ -537,6 +540,11 @@ let ui = {
   showAncestors: true,
   hideSiblings: false,
   hideOtherPartners: false,
+  // Käyttäjän itse valitsemat "Piilota sisarukset" / "Piilota muut kumppanit" -asetukset,
+  // erillään ui.hideSiblings/hideOtherPartners:sta - näitä käytetään palautusarvoina kun
+  // pakotus (ks. updatePerfSafeguard) ei enää ole voimassa.
+  userHideSiblings: false,
+  userHideOtherPartners: false,
   zoom: 1,
   panX: 0,
   panY: 0,
@@ -627,21 +635,40 @@ function applyUiSettingsFromData(data){
   if(typeof s.showAncestors === 'boolean') ui.showAncestors = s.showAncestors;
   if(typeof s.hideSiblings === 'boolean') ui.hideSiblings = s.hideSiblings;
   if(typeof s.hideOtherPartners === 'boolean') ui.hideOtherPartners = s.hideOtherPartners;
+  // Tallennetun tiedoston asetukset ovat myös uusi käyttäjän oma "muistettu" valinta, jota
+  // käytetään kun sukupolvimäärän pakotus (updatePerfSafeguard) ei ole voimassa.
+  ui.userHideSiblings = ui.hideSiblings;
+  ui.userHideOtherPartners = ui.hideOtherPartners;
 }
+
+/* Suurilla sukupuilla (yli 2 sukupolvea ylös TAI alas) piirto hidastuu merkittävästi, jos
+   sisarukset ja ylimääräiset kumppanit (ja niiden koko sivuhaarat) piirretään mukaan. Siksi
+   "Piilota sisarukset" ja "Piilota muut kumppanit" pakotetaan automaattisesti päälle silloin,
+   ja palautetaan käyttäjän omaan valintaan kun sukupolvimäärä taas laskee 2:een tai alle. */
+function updatePerfSafeguard(){
+  const forced = ui.genUp > 2 || ui.genDown > 2;
+  ui.hideSiblings = forced ? true : ui.userHideSiblings;
+  ui.hideOtherPartners = forced ? true : ui.userHideOtherPartners;
+  const hideSiblingsChk = document.getElementById('hideSiblingsChk');
+  const hideOtherPartnersChk = document.getElementById('hideOtherPartnersChk');
+  const hint = document.getElementById('perfSafeguardHint');
+  if(hideSiblingsChk){ hideSiblingsChk.checked = ui.hideSiblings; hideSiblingsChk.disabled = forced; }
+  if(hideOtherPartnersChk){ hideOtherPartnersChk.checked = ui.hideOtherPartners; hideOtherPartnersChk.disabled = forced; }
+  if(hint) hint.style.display = forced ? '' : 'none';
+  return forced;
+}
+
 function syncUiControlsFromState(){
   const rootSelect = document.getElementById('rootSelect');
   const orientSelect = document.getElementById('orientSelect');
   const showAncestorsChk = document.getElementById('showAncestorsChk');
   const genUpInput = document.getElementById('genUp');
   const genDownInput = document.getElementById('genDown');
-  const hideSiblingsChk = document.getElementById('hideSiblingsChk');
-  const hideOtherPartnersChk = document.getElementById('hideOtherPartnersChk');
   if(orientSelect) orientSelect.value = ui.orientation;
   if(showAncestorsChk) showAncestorsChk.checked = ui.showAncestors;
   if(genUpInput){ genUpInput.value = ui.genUp; genUpInput.disabled = !ui.showAncestors; }
   if(genDownInput) genDownInput.value = ui.genDown;
-  if(hideSiblingsChk) hideSiblingsChk.checked = ui.hideSiblings;
-  if(hideOtherPartnersChk) hideOtherPartnersChk.checked = ui.hideOtherPartners;
+  updatePerfSafeguard();
   // rootSelect-valikon arvo asetetaan renderRootSelect():ssa, joka kunnioittaa ui.rootId:tä
   const treeNameInput = document.getElementById('treeNameInput');
   if(treeNameInput) treeNameInput.value = state.treeName || 'Sukupuu';
@@ -2726,19 +2753,22 @@ document.getElementById('searchBox').addEventListener('input', renderPersonList)
 
 document.getElementById('rootSelect').addEventListener('change', (e)=>{ ui.rootId = e.target.value; renderTree(); fitToView(); });
 document.getElementById('orientSelect').addEventListener('change', (e)=>{ ui.orientation = e.target.value; renderTree(); fitToView(); });
-document.getElementById('genUp').addEventListener('input', (e)=>{ ui.genUp = Math.max(0, +e.target.value||0); renderTree(); fitToView(); });
-document.getElementById('genDown').addEventListener('input', (e)=>{ ui.genDown = Math.max(0, +e.target.value||0); renderTree(); fitToView(); });
+document.getElementById('genUp').addEventListener('input', (e)=>{ ui.genUp = Math.max(0, +e.target.value||0); updatePerfSafeguard(); renderTree(); fitToView(); });
+document.getElementById('genDown').addEventListener('input', (e)=>{ ui.genDown = Math.max(0, +e.target.value||0); updatePerfSafeguard(); renderTree(); fitToView(); });
 document.getElementById('showAncestorsChk').addEventListener('change', (e)=>{
   ui.showAncestors = e.target.checked;
   document.getElementById('genUp').disabled = !ui.showAncestors;
+  updatePerfSafeguard();
   renderTree(); fitToView();
 });
 document.getElementById('hideSiblingsChk').addEventListener('change', (e)=>{
-  ui.hideSiblings = e.target.checked;
+  ui.userHideSiblings = e.target.checked;
+  updatePerfSafeguard();
   renderTree(); fitToView();
 });
 document.getElementById('hideOtherPartnersChk').addEventListener('change', (e)=>{
-  ui.hideOtherPartners = e.target.checked;
+  ui.userHideOtherPartners = e.target.checked;
+  updatePerfSafeguard();
   renderTree(); fitToView();
 });
 
