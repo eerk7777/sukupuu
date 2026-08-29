@@ -1,0 +1,2928 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sukupuu</title>
+<style>
+  :root{
+    --bg:#f5f4f1;
+    --panel:#ffffff;
+    --panel-border:#e0ddd6;
+    --text:#2b2a27;
+    --text-dim:#726f68;
+    --accent:#7a5c3e;
+    --accent-dim:#c9b79c;
+    --accent-bg:#f1e9dd;
+    --line-parent:#8a7a63;
+    --line-spouse:#b5804f;
+    --danger:#a5423a;
+    --radius:10px;
+    --shadow:0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    color:var(--text);
+    border-radius:7px;
+    padding:6px 12px;
+    font-size:13px;
+  }
+  button:hover{background:var(--accent-bg);}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.primary:hover{background:#6b4f34;}
+  button.danger{color:var(--danger);border-color:var(--danger);background:#fff;}
+  button.danger:hover{background:#fbeceb;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  input,select,textarea{
+    font-family:inherit;
+    font-size:13px;
+    padding:6px 8px;
+    border:1px solid var(--panel-border);
+    border-radius:6px;
+    background:#fff;
+    color:var(--text);
+    width:100%;
+  }
+  label{font-size:12px;color:var(--text-dim);display:block;margin:8px 0 3px;}
+  h1,h2,h3,h4{margin:0;font-weight:600;}
+
+  /* Topbar */
+  #topbar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 12px;
+    background:var(--panel);
+    border-bottom:1px solid var(--panel-border);
+    flex-wrap:wrap;
+    z-index:5;
+  }
+  #topbar .title{font-size:15px;font-weight:700;color:var(--accent);margin-right:8px;white-space:nowrap;}
+  #topbar .grp{display:flex;align-items:center;gap:6px;}
+  #topbar .sep{width:1px;height:22px;background:var(--panel-border);margin:0 4px;}
+  #topbar .spacer{flex:1;}
+  #fileStatus{font-size:12px;color:var(--text-dim);white-space:nowrap;}
+
+  /* Layout */
+  #main{flex:1;display:flex;min-height:0;}
+  #sidebar{
+    width:280px;
+    min-width:280px;
+    background:var(--panel);
+    border-right:1px solid var(--panel-border);
+    display:flex;
+    flex-direction:column;
+  }
+  #sidebar .side-head{padding:10px;border-bottom:1px solid var(--panel-border);}
+  #personList{flex:1;overflow-y:auto;}
+  .person-row{
+    padding:8px 10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border-bottom:1px solid #f0eee9;
+    cursor:pointer;
+  }
+  .person-row:hover{background:var(--accent-bg);}
+  .person-row.active{background:var(--accent-bg);border-left:3px solid var(--accent);}
+  .avatar{
+    width:32px;height:32px;border-radius:50%;
+    background:var(--accent-dim);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;flex-shrink:0;overflow:hidden;
+  }
+  .avatar img{width:100%;height:100%;object-fit:cover;}
+  .person-row .pname{font-size:13px;font-weight:600;}
+  .person-row .pdates{font-size:11px;color:var(--text-dim);}
+
+  #treeWrap{flex:1;position:relative;overflow:hidden;background:
+    radial-gradient(circle, #e5e2da 1px, transparent 1px) 0 0/18px 18px, var(--bg);}
+  #treeSvg{width:100%;height:100%;cursor:grab;}
+  #treeSvg.dragging{cursor:grabbing;}
+  .tree-controls{
+    position:absolute;top:10px;left:10px;
+    background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:8px;padding-top:22px;flex-direction:column;gap:6px;font-size:12px;max-width:230px;
+    display:none;
+  }
+  .tree-controls.open{display:flex;}
+  .tree-controls .row{display:flex;align-items:center;gap:6px;}
+  .tree-controls .row label{margin:0;white-space:nowrap;}
+  .checkbox-row{display:flex;align-items:center;gap:6px;margin:8px 0;}
+  .checkbox-row label{margin:0;}
+  .tree-controls-close{
+    position:absolute;top:5px;right:6px;width:18px;height:18px;padding:0;
+    border:none;background:transparent;color:var(--text-dim);cursor:pointer;
+    font-size:13px;line-height:1;
+  }
+  .tree-controls-close:hover{color:var(--accent);}
+  .tree-controls-toggle{
+    position:absolute;top:10px;left:10px;z-index:4;
+    width:32px;height:32px;border-radius:50%;border:none;
+    background:#9a968c;color:#fff;font-weight:700;font-size:13px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:var(--shadow);
+  }
+  .tree-controls-toggle:hover{background:var(--accent);}
+  .tree-controls-toggle.hidden{display:none;}
+  .zoom-controls{position:absolute;bottom:10px;left:10px;display:flex;gap:4px;}
+
+  /* Koko näytön tila: piilottaa nimilistan ja sivun oman yläpalkin, ja yhdessä
+     Fullscreen APIn kanssa myös selaimen oman otsikkopalkin/toolbarin. */
+  body.fs-active #topbar{display:none;}
+  body.fs-active #sidebar{display:none;}
+  #fsTitleBar{
+    display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:6;
+    font-size:15px;font-weight:700;color:var(--accent);background:var(--panel);
+    padding:7px 16px;border-radius:var(--radius);box-shadow:var(--shadow);white-space:nowrap;
+  }
+  body.fs-active #fsTitleBar{display:block;}
+  #btnExitFullscreen{display:none;position:absolute;top:10px;right:10px;z-index:6;}
+  body.fs-active #btnExitFullscreen{display:flex;align-items:center;gap:4px;}
+
+  .node{cursor:pointer;}
+  .node rect{fill:var(--panel);stroke:var(--accent-dim);stroke-width:1.5;filter:drop-shadow(0 1px 2px rgba(0,0,0,.12));}
+  .node.selected rect{stroke:var(--accent);stroke-width:2.5;}
+  .node text{font-family:inherit;fill:var(--text);}
+  .node .years{fill:var(--text-dim);font-size:10px;}
+  .node .firstname{font-size:11px;font-weight:500;fill:var(--text-dim);}
+  .node .name{font-size:12.5px;font-weight:700;}
+  .link-parent{stroke:var(--line-parent);stroke-width:1.6;fill:none;}
+  .link-spouse{stroke:var(--line-spouse);stroke-width:1.6;stroke-dasharray:3,2;fill:none;}
+  .nav-arrow{cursor:pointer;}
+  .nav-arrow circle{fill:var(--panel);stroke:var(--accent-dim);stroke-width:1.3;filter:drop-shadow(0 1px 2px rgba(0,0,0,.12));}
+  .nav-arrow text{font-size:9px;fill:var(--accent);pointer-events:none;}
+  .nav-arrow:hover circle{fill:var(--accent);stroke:var(--accent);}
+  .nav-arrow:hover text{fill:#fff;}
+  .fan-slice{cursor:pointer;stroke:var(--bg);stroke-width:1.2;}
+  .fan-slice:hover{filter:brightness(1.12);}
+  .fan-slice-text{font-family:inherit;fill:#20242a;pointer-events:none;}
+  .fan-center{cursor:pointer;}
+  .fan-center circle.bg{fill:var(--panel);stroke:var(--accent-dim);stroke-width:1.5;filter:drop-shadow(0 1px 2px rgba(0,0,0,.15));}
+  .fan-center text{font-family:inherit;fill:var(--text);text-anchor:middle;font-weight:700;}
+  .fan-empty-slice{fill:var(--panel);opacity:.35;stroke:var(--bg);stroke-width:1.2;}
+
+  #emptyState{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;color:var(--text-dim);text-align:center;}
+
+  /* Editor panel */
+  #editorPanel{
+    width:420px;min-width:420px;
+    background:var(--panel);
+    border-left:1px solid var(--panel-border);
+    display:none;flex-direction:column;
+    overflow:hidden;
+  }
+  #editorPanel.open{display:flex;}
+  .editor-head{padding:10px 14px;border-bottom:1px solid var(--panel-border);display:flex;align-items:center;gap:8px;}
+  .editor-head h3{flex:1;font-size:15px;}
+  .tabs{display:flex;border-bottom:1px solid var(--panel-border);}
+  .tab-btn{
+    flex:1;padding:9px 6px;text-align:center;font-size:12.5px;background:transparent;
+    border:none;border-bottom:2px solid transparent;border-radius:0;color:var(--text-dim);
+  }
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600;}
+  .tab-content{flex:1;overflow-y:auto;padding:14px;display:none;}
+  .tab-content.active{display:block;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;}
+  .form-grid .full{grid-column:1/-1;}
+  .field-pair-row{display:grid;grid-template-columns:100px 1fr;gap:0 10px;}
+  .field-row{display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;}
+  .field-row input{flex:1;}
+  .list-item{
+    border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#fbfaf8;
+  }
+  .list-item .li-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;}
+  .list-item .li-title{font-weight:600;font-size:13px;}
+  .list-item .li-sub{font-size:11.5px;color:var(--text-dim);}
+  .small-btn{padding:2px 8px;font-size:11px;}
+  .section-title{font-size:12.5px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px;}
+  .section-title:first-child{margin-top:0;}
+  .rel-block{border:1px solid var(--panel-border);border-radius:8px;padding:10px;margin-bottom:10px;}
+  .photo-preview{width:70px;height:70px;border-radius:8px;object-fit:cover;background:var(--accent-bg);border:1px solid var(--panel-border);}
+  .muted{color:var(--text-dim);font-size:12px;}
+  a.link{color:var(--accent);text-decoration:none;word-break:break-all;}
+  a.link:hover{text-decoration:underline;}
+
+  /* Modal */
+  #modalOverlay{
+    position:fixed;inset:0;background:rgba(30,28,24,.35);
+    display:none;align-items:center;justify-content:center;z-index:50;
+  }
+  #modalOverlay.open{display:flex;}
+  #modalBox{
+    background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
+    width:360px;max-width:92vw;padding:18px;
+  }
+  #modalBox h4{margin-bottom:8px;}
+  #modalBox .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+
+  /* Suurennettu tekstikentän muokkausikkuna (esim. Kuvaus / muistiinpanot) */
+  #textExpandOverlay{
+    position:fixed;inset:0;background:rgba(30,28,24,.35);
+    display:none;align-items:center;justify-content:center;z-index:55;
+  }
+  #textExpandOverlay.open{display:flex;}
+  #textExpandBox{
+    background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
+    width:min(680px,92vw);height:min(560px,82vh);padding:16px;
+    display:flex;flex-direction:column;
+  }
+  #textExpandHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;}
+  #textExpandHead h4{font-size:14px;}
+  #textExpandArea{flex:1;resize:none;font-family:inherit;font-size:13.5px;line-height:1.5;}
+
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:var(--accent-dim);border-radius:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* Tulostus: näytetään vain itse sukupuu-SVG, ei sivupalkkia/yläpalkkia/paneeleja
+     eikä puiden navigointinuolia (nav-arrow). */
+  @media print{
+    body.printing #topbar, body.printing #sidebar, body.printing #editorPanel,
+    body.printing #treeControlsPanel, body.printing #treeControlsToggle,
+    body.printing .zoom-controls, body.printing #modalOverlay, body.printing #textExpandOverlay,
+    body.printing #emptyState{
+      display:none !important;
+    }
+    body.printing .nav-arrow{ display:none !important; }
+    body.printing #main{ display:block !important; }
+    body.printing #treeWrap{
+      position:static !important; width:100% !important; height:auto !important;
+      overflow:visible !important; background:#fff !important;
+    }
+    body.printing #treeSvg{ width:100% !important; height:auto !important; cursor:default !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="title">🌳 <span id="appTitleText">Sukupuu</span></div>
+  <div class="grp">
+    <button class="primary" id="btnNewPerson">+ Uusi henkilö</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnSaveFile" title="Tallenna tiedostoon">💾 Tallenna</button>
+    <button id="btnSaveAs" title="Tallenna nimellä">Tallenna nimellä…</button>
+    <button id="btnOpenFile" title="Avaa tiedosto">📂 Avaa</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnImportGedcom" title="Tuo GEDCOM-tiedosto (.ged)">⬇ Tuo GEDCOM</button>
+    <button id="btnExportGedcom" title="Vie GEDCOM-tiedostoksi (.ged)">⬆ Vie GEDCOM</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button id="btnPrintTree" title="Tulosta näkyvä sukupuu">🖨 Tulosta</button>
+    <button id="btnClearTree" title="Tyhjennä koko sukupuu ja aloita uusi">🗑 Tyhjennä sukupuu</button>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <input id="searchBox" placeholder="Hae henkilöä…" style="width:170px;">
+  </div>
+  <div class="spacer"></div>
+  <div id="fileStatus">Ei tallennettua tiedostoa</div>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div class="side-head">
+      <div class="muted" id="personCount">0 henkilöä</div>
+    </div>
+    <div id="personList"></div>
+  </div>
+
+  <div id="treeWrap">
+    <svg id="treeSvg"><g id="viewport"></g></svg>
+    <div id="emptyState">
+      <div style="font-size:40px;">🌳</div>
+      <div>Sukupuu on vielä tyhjä.<br>Aloita lisäämällä ensimmäinen henkilö.</div>
+      <button class="primary" id="btnEmptyAdd">+ Lisää henkilö</button>
+    </div>
+    <button type="button" id="treeControlsToggle" class="tree-controls-toggle" title="Näytä asetukset">A</button>
+    <div class="tree-controls" id="treeControlsPanel">
+      <button type="button" id="treeControlsClose" class="tree-controls-close" title="Piilota asetukset">✕</button>
+      <div class="row">
+        <label style="width:70px;">Otsikko</label>
+        <input type="text" id="treeNameInput" placeholder="Sukupuu" style="flex:1;">
+      </div>
+      <div class="row">
+        <label style="width:70px;">Juuri</label>
+        <select id="rootSelect" style="flex:1;"></select>
+      </div>
+      <div class="row">
+        <label style="width:70px;">Sukupuunäkymä</label>
+        <select id="orientSelect" style="flex:1;">
+          <option value="vertical">Pystysuunta</option>
+          <option value="horizontal">Vaakasuunta</option>
+          <option value="fan">Viuhkanäkymä</option>
+        </select>
+      </div>
+      <div class="row">
+        <input type="checkbox" id="showAncestorsChk" checked style="width:auto;">
+        <label style="width:auto;">Näytä edelliset sukupolvet</label>
+      </div>
+      <div class="row">
+        <label style="width:70px;">Sukupolvia ylös</label>
+        <input type="number" id="genUp" min="0" max="10" value="2" style="width:55px;">
+      </div>
+      <div class="row">
+        <label style="width:70px;">Sukupolvia alas</label>
+        <input type="number" id="genDown" min="0" max="10" value="2" style="width:55px;">
+      </div>
+      <div class="row">
+        <input type="checkbox" id="hideSiblingsChk" style="width:auto;">
+        <label style="width:auto;">Piilota sisarukset (kaikki sukupolvet)</label>
+      </div>
+      <div class="row">
+        <input type="checkbox" id="hideOtherPartnersChk" style="width:auto;">
+        <label style="width:auto;">Piilota muut kumppanit</label>
+      </div>
+      <div class="muted" id="perfSafeguardHint" style="font-size:11px;line-height:1.4;margin:-4px 0 4px;display:none;">
+        Pakotettu päälle nopeamman piirron vuoksi, koska sukupolvia näytetään yli 2.
+      </div>
+    </div>
+    <div class="zoom-controls">
+      <button id="btnZoomOut">−</button>
+      <button id="btnZoomReset">⤢</button>
+      <button id="btnZoomIn">+</button>
+      <button id="btnFullscreen" title="Koko näyttö">⛶</button>
+    </div>
+    <div id="fsTitleBar"></div>
+    <button type="button" id="btnExitFullscreen" title="Poistu koko näytön tilasta">✕ Takaisin</button>
+  </div>
+
+  <div id="editorPanel">
+    <div class="editor-head">
+      <h3 id="editorTitle">Henkilö</h3>
+      <button class="small-btn" id="btnCenterOnPerson" title="Aseta puun juureksi">Keskitä puu</button>
+      <button class="small-btn danger" id="btnDeletePerson">Poista</button>
+      <button class="small-btn" id="btnCloseEditor">✕</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="perus">Perustiedot</button>
+      <button class="tab-btn" data-tab="aikajana">Aikajana</button>
+      <button class="tab-btn" data-tab="lahteet">Lähteet</button>
+      <button class="tab-btn" data-tab="suhteet">Suhteet</button>
+    </div>
+
+    <div class="tab-content active" id="tab-perus">
+      <div class="form-grid">
+        <div><label>Etunimi(et)</label><input id="f-etunimi"></div>
+        <div><label>Syntymäsukunimi</label><input id="f-sukunimi"></div>
+        <div class="full"><label>Sukunimi kuollessa <span class="muted">(jos eri kuin syntymäsukunimi)</span></label><input id="f-sukunimi-kuollessa" placeholder="esim. avioliiton kautta saatu sukunimi"></div>
+        <div class="full"><label>Patronyymi / matronyymi <span class="muted">(esim. Erikinpoika, Juhontytär)</span></label><input id="f-patronyymi" placeholder="esim. Erikinpoika"></div>
+        <div class="full"><label>Sukupuussa ja listoissa näytettävä sukunimi</label>
+          <select id="f-nimivalinta">
+            <option value="synt">Syntymäsukunimi</option>
+            <option value="kuollessa">Sukunimi kuollessa</option>
+            <option value="patronyymi">Patronyymi/matronyymi</option>
+          </select>
+        </div>
+        <div><label>Sukupuoli</label>
+          <select id="f-sukupuoli">
+            <option value="">Ei tiedossa</option>
+            <option value="nainen">Nainen</option>
+            <option value="mies">Mies</option>
+            <option value="muu">Muu</option>
+          </select>
+        </div>
+        <div><label>Ammatti</label><input id="f-ammatti"></div>
+        <div class="full field-pair-row">
+          <div><label>Syntymäaika</label><input id="f-syntaika" placeholder="pvm.kk.vvvv"></div>
+          <div><label>Syntymäpaikka</label>
+            <div style="display:flex;gap:6px;">
+              <input id="f-syntpaikka" style="flex:1;">
+              <button type="button" class="small-btn" id="btnWikiSyntpaikka" title="Avaa syntymäpaikkakunnan artikkeli Wikipediasta">Wikipedia</button>
+              <button type="button" class="small-btn" id="btnMapSyntpaikka" title="Avaa syntymäpaikka Google-kartalla">Kartta</button>
+            </div>
+          </div>
+        </div>
+        <div class="full field-pair-row">
+          <div><label>Kuolinaika</label><input id="f-kuolaika" placeholder="pvm.kk.vvvv"></div>
+          <div><label>Kuolinpaikka</label><input id="f-kuolpaikka"></div>
+        </div>
+        <div class="full field-pair-row">
+          <div><label>Hautausaika</label><input id="f-hautaaika" placeholder="pvm.kk.vvvv"></div>
+          <div><label>Hautapaikka</label><input id="f-hautapaikka"></div>
+        </div>
+        <div class="full"><label>Valokuva</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <img id="photoPreview" class="photo-preview" style="display:none;">
+            <div>
+              <input type="file" id="f-photo" accept="image/*" style="width:auto;">
+              <button class="small-btn" id="btnRemovePhoto" style="margin-top:6px;">Poista kuva</button>
+            </div>
+          </div>
+        </div>
+        <div class="full">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label style="margin:8px 0 3px;">Kuvaus / muistiinpanot</label>
+            <button type="button" id="btnExpandKuvaus" class="small-btn" title="Suurenna muokkausikkuna">⤢ Suurenna</button>
+          </div>
+          <textarea id="f-kuvaus" rows="4"></textarea>
+        </div>
+      </div>
+
+      <div class="section-title">Haploryhmät (DNA)</div>
+      <div class="form-grid">
+        <div><label>Y-DNA haploryhmä</label><input id="f-ydna" placeholder="esim. R1a-Z282"></div>
+        <div><label>mtDNA haploryhmä</label><input id="f-mtdna" placeholder="esim. H1a1"></div>
+      </div>
+
+      <div class="section-title">Muut tiedot</div>
+      <div id="customFieldsList"></div>
+      <button class="small-btn" id="btnAddCustomField">+ Lisää kenttä</button>
+
+      <div class="section-title">Profiilin näkymäasetukset</div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="f-piilota-puolisot-lapset" style="width:auto;">
+        <label style="width:auto;">Piilota kumppanit ja lapset sukupuussa</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="f-piilota-profiili" style="width:auto;">
+        <label style="width:auto;">Piilota profiili sukupuussa</label>
+      </div>
+
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+        <button class="primary" id="btnSavePerson">Tallenna henkilö</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-aikajana">
+      <div id="eventsList"></div>
+      <button class="small-btn" id="btnAddEvent">+ Lisää tapahtuma</button>
+    </div>
+
+    <div class="tab-content" id="tab-lahteet">
+      <div class="muted" style="margin-bottom:8px;">Linkit tietolähteisiin (esim. arkistot, verkkosivut, viitteet).</div>
+      <div id="sourceList"></div>
+      <button class="small-btn" id="btnAddSource">+ Lisää lähdelinkki</button>
+    </div>
+
+    <div class="tab-content" id="tab-suhteet">
+      <div class="section-title">Vanhemmat</div>
+      <div id="parentsList"></div>
+      <button class="small-btn" id="btnAddParent" style="margin-bottom:14px;">+ Lisää vanhempi</button>
+
+      <div class="section-title">Puolisot / kumppanit</div>
+      <div id="spousesList"></div>
+      <button class="small-btn" id="btnAddSpouse" style="margin-bottom:14px;">+ Lisää puoliso</button>
+
+      <div class="section-title">Lapset</div>
+      <div id="childrenList"></div>
+      <button class="small-btn" id="btnAddChild">+ Lisää lapsi</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalOverlay">
+  <div id="modalBox">
+    <h4 id="modalTitle">Otsikko</h4>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button id="modalCancel">Peruuta</button>
+      <button class="primary" id="modalOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="textExpandOverlay">
+  <div id="textExpandBox">
+    <div id="textExpandHead">
+      <h4>Kuvaus / muistiinpanot</h4>
+      <button type="button" id="btnShrinkKuvaus" class="small-btn">⤡ Pienennä</button>
+    </div>
+    <textarea id="textExpandArea"></textarea>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------------------------------------------------------------
+   TILA (data model)
+--------------------------------------------------------------------- */
+let state = {
+  treeName: 'Sukupuu', // sukupuun oma, muokattava nimi/otsikko (esim. "Erkkilän sukupuu")
+  persons: [],   // {id, etunimi, sukunimi, sukupuoli, ammatti, syntAika, syntPaikka, kuolAika, kuolPaikka,
+                 //  kuvaus, valokuva(dataURL), customFields:[{avain,arvo}], sourceLinks:[{otsikko,url,huom}],
+                 //  parentIds:[id,id]}
+  unions: [],    // {id, personIds:[id,id], tyyppi, alkoi, paattyi, huomiot}
+  events: []     // {id, personId, pvm, otsake, kuvaus, sourceLinks:[{otsikko,url}]}
+};
+
+let ui = {
+  selectedPersonId: null,
+  editingPersonId: null,   // person currently open in editor (draft)
+  draft: null,             // working copy of person being edited
+  rootId: null,
+  orientation: 'vertical',
+  genUp: 2,
+  genDown: 2,
+  showAncestors: true,
+  hideSiblings: false,
+  hideOtherPartners: false,
+  // Käyttäjän itse valitsemat "Piilota sisarukset" / "Piilota muut kumppanit" -asetukset,
+  // erillään ui.hideSiblings/hideOtherPartners:sta - näitä käytetään palautusarvoina kun
+  // pakotus (ks. updatePerfSafeguard) ei enää ole voimassa.
+  userHideSiblings: false,
+  userHideOtherPartners: false,
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  activeTab: 'perus',
+  fileHandle: null
+};
+
+function genId(){ return 'p_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+/* ---------------------------------------------------------------------
+   PIENI APUFUNKTIOT
+--------------------------------------------------------------------- */
+function displaySukunimi(p){
+  if(!p) return '';
+  if(p.nimiValinta==='kuollessa' && p.sukunimiKuollessa) return p.sukunimiKuollessa;
+  if(p.nimiValinta==='patronyymi' && p.patronyymi) return p.patronyymi;
+  return p.sukunimi||'';
+}
+function fullName(p){
+  if(!p) return '(tuntematon)';
+  const n = [p.etunimi||'', displaySukunimi(p)].join(' ').trim();
+  return n || '(nimetön)';
+}
+function firstGivenName(p){
+  if(!p) return '';
+  const full = (p.etunimi||'').trim();
+  if(!full) return '';
+  return full.split(/\s+/)[0];
+}
+function treeDisplayName(p){
+  if(!p) return '(tuntematon)';
+  const n = [firstGivenName(p), displaySukunimi(p)].join(' ').trim();
+  return n || '(nimetön)';
+}
+function initials(p){
+  const a = (p.etunimi||'').trim()[0]||'';
+  const b = (displaySukunimi(p)||'').trim()[0]||'';
+  return (a+b).toUpperCase() || '?';
+}
+function yearOf(dateStr){
+  if(!dateStr) return '';
+  const m = String(dateStr).match(/(\d{4})/);
+  return m ? m[1] : dateStr;
+}
+function lifeSpan(p){
+  const b = yearOf(p.syntAika), d = yearOf(p.kuolAika);
+  // Kuolleet: "synt-kuol" (esim. 1857-1902). Elossa olevat: pelkkä syntymävuosi ilman viivaa (esim. 1973).
+  if(p && p.kuolAika){
+    if(!b && !d) return '';
+    return (b||'?') + '–' + (d||'?');
+  }
+  return b || '';
+}
+/* ---------------------------------------------------------------------
+   HAKUINDEKSIT (suorituskyky isoilla sukupuilla)
+   personById/childrenOf/unionsOf ovat sukupuun piirrossa ja käsittelyssä
+   ylivoimaisesti eniten kutsuttuja funktioita - esim. yhden puunäkymän
+   piirto kutsuu niitä kertaluokkaa "näkyvien henkilöiden määrä" kertaa.
+   Suoraan state.persons/state.unions-taulukoita läpikäyvä .find()/.filter()
+   on O(henkilöiden määrä) JOKAISELLA kutsulla, jolloin koko piirto muuttuu
+   O(n²):ksi - kymmenien tuhansien henkilöiden sukupuulla (esim. GEDCOM-
+   tuonnilla tuotu) tämä näkyy sekuntien tai jopa minuuttien viiveenä.
+   Sen sijaan pidetään yllä id-avaimisia Map-indeksejä, jotka rakennetaan
+   laiskasti (vain kun jotain on oikeasti muuttunut, ks. invalidateIndexes)
+   - yksi O(n) uudelleenrakennus per oikea muutos, minkä jälkeen jokainen
+   haku on O(1)/O(k) (k = kyseisen henkilön lasten/liittojen määrä). */
+let personIndex = new Map();
+let childrenIndex = new Map();       // vanhemman id -> lapset (taulukko)
+let unionsByPersonIndex = new Map(); // henkilön id -> liitot (taulukko)
+let indexesDirty = true;
+
+function invalidateIndexes(){ indexesDirty = true; }
+
+function ensureIndexes(){
+  if(!indexesDirty) return;
+  personIndex = new Map();
+  childrenIndex = new Map();
+  unionsByPersonIndex = new Map();
+  state.persons.forEach(p=>{
+    personIndex.set(p.id, p);
+    (p.parentIds||[]).forEach(pid=>{
+      let arr = childrenIndex.get(pid);
+      if(!arr){ arr = []; childrenIndex.set(pid, arr); }
+      arr.push(p);
+    });
+  });
+  state.unions.forEach(u=>{
+    (u.personIds||[]).forEach(pid=>{
+      let arr = unionsByPersonIndex.get(pid);
+      if(!arr){ arr = []; unionsByPersonIndex.set(pid, arr); }
+      arr.push(u);
+    });
+  });
+  indexesDirty = false;
+}
+
+function personById(id){
+  if(!id) return undefined;
+  ensureIndexes();
+  return personIndex.get(id);
+}
+function childrenOf(id){
+  ensureIndexes();
+  const arr = childrenIndex.get(id);
+  return arr ? arr.slice() : []; // kopio, jotta esim. .sort() kutsujan päässä ei sotke indeksiä
+}
+function unionsOf(id){
+  ensureIndexes();
+  const arr = unionsByPersonIndex.get(id);
+  return arr ? arr.slice() : [];
+}
+function spousesOf(id){
+  return unionsOf(id).map(u => {
+    const otherId = u.personIds.find(x=>x!==id);
+    return {union:u, person: personById(otherId)};
+  }).filter(x=>x.person);
+}
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------------------------------------------------------------
+   NÄKYMÄN OLETUSASETUKSET (tallennetaan tiedoston/varmuuskopion mukana)
+--------------------------------------------------------------------- */
+function getUiSettingsSnapshot(){
+  return {
+    rootId: ui.rootId,
+    orientation: ui.orientation,
+    genUp: ui.genUp,
+    genDown: ui.genDown,
+    showAncestors: ui.showAncestors,
+    hideSiblings: ui.hideSiblings,
+    hideOtherPartners: ui.hideOtherPartners
+  };
+}
+function applyUiSettingsFromData(data){
+  const s = data && data.uiSettings;
+  if(!s) return;
+  if(s.rootId && personById(s.rootId)) ui.rootId = s.rootId;
+  if(s.orientation === 'vertical' || s.orientation === 'horizontal' || s.orientation === 'fan') ui.orientation = s.orientation;
+  if(Number.isFinite(s.genUp)) ui.genUp = Math.max(0, s.genUp);
+  if(Number.isFinite(s.genDown)) ui.genDown = Math.max(0, s.genDown);
+  if(typeof s.showAncestors === 'boolean') ui.showAncestors = s.showAncestors;
+  if(typeof s.hideSiblings === 'boolean') ui.hideSiblings = s.hideSiblings;
+  if(typeof s.hideOtherPartners === 'boolean') ui.hideOtherPartners = s.hideOtherPartners;
+  // Tallennetun tiedoston asetukset ovat myös uusi käyttäjän oma "muistettu" valinta, jota
+  // käytetään kun sukupolvimäärän pakotus (updatePerfSafeguard) ei ole voimassa.
+  ui.userHideSiblings = ui.hideSiblings;
+  ui.userHideOtherPartners = ui.hideOtherPartners;
+}
+
+/* Suurilla sukupuilla (yli 2 sukupolvea ylös TAI alas) piirto hidastuu merkittävästi, jos
+   sisarukset ja ylimääräiset kumppanit (ja niiden koko sivuhaarat) piirretään mukaan. Siksi
+   "Piilota sisarukset" ja "Piilota muut kumppanit" pakotetaan automaattisesti päälle silloin,
+   ja palautetaan käyttäjän omaan valintaan kun sukupolvimäärä taas laskee 2:een tai alle. */
+function updatePerfSafeguard(){
+  const forced = ui.genUp > 2 || ui.genDown > 2;
+  ui.hideSiblings = forced ? true : ui.userHideSiblings;
+  ui.hideOtherPartners = forced ? true : ui.userHideOtherPartners;
+  const hideSiblingsChk = document.getElementById('hideSiblingsChk');
+  const hideOtherPartnersChk = document.getElementById('hideOtherPartnersChk');
+  const hint = document.getElementById('perfSafeguardHint');
+  if(hideSiblingsChk){ hideSiblingsChk.checked = ui.hideSiblings; hideSiblingsChk.disabled = forced; }
+  if(hideOtherPartnersChk){ hideOtherPartnersChk.checked = ui.hideOtherPartners; hideOtherPartnersChk.disabled = forced; }
+  if(hint) hint.style.display = forced ? '' : 'none';
+  return forced;
+}
+
+function syncUiControlsFromState(){
+  const rootSelect = document.getElementById('rootSelect');
+  const orientSelect = document.getElementById('orientSelect');
+  const showAncestorsChk = document.getElementById('showAncestorsChk');
+  const genUpInput = document.getElementById('genUp');
+  const genDownInput = document.getElementById('genDown');
+  if(orientSelect) orientSelect.value = ui.orientation;
+  if(showAncestorsChk) showAncestorsChk.checked = ui.showAncestors;
+  if(genUpInput){ genUpInput.value = ui.genUp; genUpInput.disabled = !ui.showAncestors; }
+  if(genDownInput) genDownInput.value = ui.genDown;
+  updatePerfSafeguard();
+  // rootSelect-valikon arvo asetetaan renderRootSelect():ssa, joka kunnioittaa ui.rootId:tä
+  const treeNameInput = document.getElementById('treeNameInput');
+  if(treeNameInput) treeNameInput.value = state.treeName || 'Sukupuu';
+  renderTreeName();
+}
+
+/* Sukupuun otsikko: näytetään sekä yläpalkissa (puun kuvan vieressä) että
+   koko näytön tilan keskitetyssä otsikkopalkissa. */
+function renderTreeName(){
+  const name = (state.treeName || 'Sukupuu').trim() || 'Sukupuu';
+  const topbarEl = document.getElementById('appTitleText');
+  const fsEl = document.getElementById('fsTitleBar');
+  if(topbarEl) topbarEl.textContent = name;
+  if(fsEl) fsEl.textContent = name;
+}
+
+/* ---------------------------------------------------------------------
+   AIKAJANAN AUTOMAATTITAPAHTUMAT
+   Synkronoi jokaisen henkilön syntymä-, avioliitto- ja kuolintapahtumat
+   sekä lasten syntymät (vanhemman omalle aikajanalle) automaattisesti
+   profiilitietojen perusteella. Jokainen automaattitapahtuma merkitään
+   autoKey-kentällä, jotta se voidaan päivittää tai poistaa uudelleen
+   ajettaessa ilman että syntyy kaksoiskappaleita. Käyttäjän itse lisäämät
+   tapahtumat (ei autoKey-kenttää) jätetään aina koskematta.
+--------------------------------------------------------------------- */
+function syncAllAutoEvents(){
+  if(!state.events) state.events = [];
+  const desired = [];
+  state.persons.forEach(p=>{
+    if(p.syntAika){
+      desired.push({personId:p.id, autoKey:'synt', pvm:p.syntAika, otsake:'Syntymä', kuvaus: p.syntPaikka ? ('Paikka: '+p.syntPaikka) : ''});
+    }
+    if(p.kuolAika){
+      desired.push({personId:p.id, autoKey:'kuol', pvm:p.kuolAika, otsake:'Kuolema', kuvaus: p.kuolPaikka ? ('Paikka: '+p.kuolPaikka) : ''});
+    }
+    unionsOf(p.id).forEach(u=>{
+      if(u.alkoi){
+        const other = personById((u.personIds||[]).find(x=>x!==p.id));
+        const tyyppi = u.tyyppi ? (u.tyyppi.charAt(0).toUpperCase()+u.tyyppi.slice(1)) : 'Avioliitto';
+        const kuvausParts = [];
+        if(other) kuvausParts.push('Puoliso: '+fullName(other));
+        if(u.paikka) kuvausParts.push('Paikka: '+u.paikka);
+        desired.push({personId:p.id, autoKey:'liitto-'+u.id, pvm:u.alkoi, otsake: tyyppi, kuvaus: kuvausParts.join(' · ')});
+      }
+    });
+    childrenOf(p.id).forEach(c=>{
+      if(c.syntAika){
+        desired.push({personId:p.id, autoKey:'lapsisynt-'+c.id, pvm:c.syntAika, otsake:'Lapsen syntymä: '+fullName(c), kuvaus: c.syntPaikka ? ('Paikka: '+c.syntPaikka) : ''});
+      }
+    });
+  });
+
+  const desiredMap = new Map(desired.map(d=>[d.personId+'::'+d.autoKey, d]));
+  // poista automaattitapahtumat, joita ei enää pitäisi olla (lähdekenttä tyhjennetty tms.)
+  state.events = state.events.filter(ev => !ev.autoKey || desiredMap.has(ev.personId+'::'+ev.autoKey));
+  const existing = new Map(
+    state.events.filter(ev=>ev.autoKey).map(ev=>[ev.personId+'::'+ev.autoKey, ev])
+  );
+  desired.forEach(d=>{
+    const key = d.personId+'::'+d.autoKey;
+    const ev = existing.get(key);
+    if(ev){
+      ev.pvm = d.pvm; ev.otsake = d.otsake; ev.kuvaus = d.kuvaus;
+    } else {
+      state.events.push({id:genId(), personId:d.personId, pvm:d.pvm, otsake:d.otsake, kuvaus:d.kuvaus, sourceLinks:[], autoKey:d.autoKey});
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+   PAIKALLINEN VARMUUSKOPIO (localStorage) - kätevyyskopio, ei ensisijainen tallennus
+--------------------------------------------------------------------- */
+function autoBackup(){
+  // Tila on saattanut muuttua (henkilö/liitto lisätty, poistettu tai suhde muokattu) juuri
+  // ennen tätä kutsua - autoBackup() kutsutaan käytännössä jokaisen muutoksen jälkeen, joten
+  // se on luonteva, kattava paikka mitätöidä hakuindeksit ennen kuin mitään lukee niitä.
+  invalidateIndexes();
+  syncAllAutoEvents();
+  try{ localStorage.setItem('sukupuu_autobackup', JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}))); }catch(e){/* ohitetaan */}
+}
+function loadAutoBackupIfPresent(){
+  try{
+    const raw = localStorage.getItem('sukupuu_autobackup');
+    if(raw){
+      const data = JSON.parse(raw);
+      if(data && Array.isArray(data.persons) && data.persons.length){
+        state = data;
+        if(!state.treeName) state.treeName = 'Sukupuu';
+        applyUiSettingsFromData(data);
+      }
+    }
+  }catch(e){/* ohitetaan */}
+}
+
+/* ---------------------------------------------------------------------
+   TIEDOSTON TALLENNUS / AVAUS (paikallinen tekstitiedosto, JSON)
+--------------------------------------------------------------------- */
+const hasFSAccess = 'showSaveFilePicker' in window && 'showOpenFilePicker' in window;
+
+async function saveToFile(forceNew){
+  const json = JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}), null, 2);
+  try{
+    if(hasFSAccess){
+      if(forceNew || !ui.fileHandle){
+        ui.fileHandle = await window.showSaveFilePicker({
+          suggestedName: 'sukupuu.json',
+          types: [{description:'Sukupuu JSON', accept:{'application/json':['.json']}}]
+        });
+      }
+      const writable = await ui.fileHandle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      setFileStatus('Tallennettu: ' + ui.fileHandle.name);
+    } else {
+      downloadFallback(json);
+      setFileStatus('Ladattu tiedostona (selaimesi ei tue suoraa tallennusta levylle)');
+    }
+  }catch(err){
+    if(err && err.name === 'AbortError') return;
+    console.error(err);
+    downloadFallback(json);
+  }
+  autoBackup();
+}
+
+function downloadFallback(json){
+  const blob = new Blob([json], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'sukupuu.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+async function openFromFile(){
+  try{
+    if(hasFSAccess){
+      const [handle] = await window.showOpenFilePicker({
+        types: [{description:'Sukupuu JSON', accept:{'application/json':['.json']}}]
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      loadStateFromJson(text);
+      ui.fileHandle = handle;
+      setFileStatus('Avattu: ' + handle.name);
+    } else {
+      document.getElementById('fileImportInput').click();
+    }
+  }catch(err){
+    if(err && err.name === 'AbortError') return;
+    console.error(err);
+    alert('Tiedoston avaaminen epäonnistui: ' + err.message);
+  }
+}
+
+function loadStateFromJson(text){
+  try{
+    const data = JSON.parse(text);
+    if(!data || !Array.isArray(data.persons)) throw new Error('Virheellinen tiedostomuoto');
+    state = {
+      treeName: data.treeName || 'Sukupuu',
+      persons: data.persons || [],
+      unions: data.unions || [],
+      events: data.events || []
+    };
+    invalidateIndexes(); // state vaihdettu kokonaan - hakuindeksit viittaisivat vanhaan puuhun
+    ui.selectedPersonId = null;
+    ui.rootId = state.persons[0] ? state.persons[0].id : null;
+    applyUiSettingsFromData(data); // palauta tallennetun tiedoston näkymän oletusasetukset (jos löytyy) - lukee personById:tä
+    closeEditor();
+    syncUiControlsFromState();
+    autoBackup();
+    refreshAll();
+  }catch(err){
+    alert('Tiedoston lukeminen epäonnistui: tiedosto ei ole kelvollinen sukupuu-tiedosto.\n(' + err.message + ')');
+  }
+}
+
+function setFileStatus(msg){
+  document.getElementById('fileStatus').textContent = msg;
+}
+
+/* ---------------------------------------------------------------------
+   SUKUPUUN TYHJENNYS (uuden sukupuun aloitus)
+--------------------------------------------------------------------- */
+function clearTree(){
+  showModal(
+    'Tyhjennä sukupuu',
+    '<p>Tämä poistaa <strong>kaikki</strong> henkilöt, suhteet ja tapahtumat nykyisestä sukupuusta ja aloittaa täysin tyhjästä. Toimintoa ei voi perua.</p><p>Jos et ole vielä tallentanut nykyistä sukupuuta tiedostoon, tiedot katoavat pysyvästi.</p>',
+    ()=>{
+      state = { treeName: 'Sukupuu', persons: [], unions: [], events: [] };
+      invalidateIndexes(); // state vaihdettu kokonaan - ei autoBackup()-kutsua tässä polussa
+      ui.selectedPersonId = null;
+      ui.rootId = null;
+      ui.fileHandle = null;
+      ui.panX = 0; ui.panY = 0; ui.zoom = 1;
+      closeEditor();
+      try{ localStorage.removeItem('sukupuu_autobackup'); }catch(e){/* ohitetaan */}
+      syncUiControlsFromState();
+      setFileStatus('Ei tallennettua tiedostoa');
+      refreshAll();
+    }
+  );
+}
+
+/* ---------------------------------------------------------------------
+   GEDCOM-TUONTI JA -VIENTI
+--------------------------------------------------------------------- */
+const GEDCOM_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+/* Suomalainen pvm.kk.vvvv (tai kk.vvvv, vvvv) -> GEDCOM-päivämäärä (esim. "12 JAN 1950"). */
+function finDateToGedcom(pvm){
+  if(!pvm) return '';
+  const s = String(pvm).trim();
+  if(!s) return '';
+  let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{3,4})$/);
+  if(m){
+    const mon = GEDCOM_MONTHS[parseInt(m[2],10)-1];
+    if(mon) return `${m[1].padStart(2,'0')} ${mon} ${m[3]}`;
+  }
+  m = s.match(/^(\d{1,2})\.(\d{3,4})$/);
+  if(m){
+    const mon = GEDCOM_MONTHS[parseInt(m[1],10)-1];
+    if(mon) return `${mon} ${m[2]}`;
+  }
+  m = s.match(/^(\d{3,4})$/);
+  if(m) return m[1];
+  return s; // tuntematon muoto - viedään sellaisenaan (GEDCOM DATE sallii myös vapaan tekstin)
+}
+
+/* GEDCOM-päivämäärä -> suomalainen pvm.kk.vvvv (tai kk.vvvv, vvvv). Säilyttää ABT/EST/BEF/AFT-etuliitteet. */
+function gedcomDateToFin(g){
+  if(!g) return '';
+  let s = String(g).trim();
+  if(!s) return '';
+  let prefix = '';
+  const pm = s.match(/^(ABT|EST|CAL|BEF|AFT)\s+(.*)$/i);
+  if(pm){ prefix = pm[1].toUpperCase()+' '; s = pm[2]; }
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{3,4})$/);
+  if(m){
+    const monIdx = GEDCOM_MONTHS.indexOf(m[2].toUpperCase());
+    if(monIdx>=0) return prefix + `${parseInt(m[1],10)}.${monIdx+1}.${m[3]}`;
+  }
+  m = s.match(/^([A-Za-z]{3})\s+(\d{3,4})$/);
+  if(m){
+    const monIdx = GEDCOM_MONTHS.indexOf(m[1].toUpperCase());
+    if(monIdx>=0) return prefix + `${monIdx+1}.${m[2]}`;
+  }
+  m = s.match(/^(\d{3,4})$/);
+  if(m) return prefix + m[1];
+  return prefix + s;
+}
+
+/* Muodostaa yhden tai useamman GEDCOM-rivin annetusta arvosta; pilkkoo rivinvaihdot CONT-riveiksi
+   ja ylipitkät (yli 200 merkkiä) rivit CONC-jatkoriveiksi. */
+function gedLines(level, tag, value){
+  const out = [];
+  const val = (value===undefined||value===null) ? '' : String(value);
+  if(!val){ out.push(`${level} ${tag}`); return out; }
+  const parts = val.split('\n');
+  parts.forEach((part, idx)=>{
+    let chunk = part;
+    if(idx===0){
+      out.push(`${level} ${tag}${chunk?(' '+chunk.slice(0,200)):''}`);
+      chunk = chunk.slice(200);
+    } else {
+      out.push(`${level+1} CONT${chunk?(' '+chunk.slice(0,200)):''}`);
+      chunk = chunk.slice(200);
+    }
+    while(chunk.length){
+      out.push(`${level+1} CONC ${chunk.slice(0,200)}`);
+      chunk = chunk.slice(200);
+    }
+  });
+  return out;
+}
+
+function gedcomSex(p){
+  if(p.sukupuoli==='mies') return 'M';
+  if(p.sukupuoli==='nainen') return 'F';
+  return 'U';
+}
+
+/* Varmistaa, että jokaiselle perheelle merkitään tasan yksi HUSB ja yksi WIFE (kun kaksi
+   vanhempaa tunnetaan). GEDCOM FAM -tietue sallii rakenteellisesti vain yhden HUSB- ja yhden
+   WIFE-rivin: jos kumpikin vanhempi saisi saman tunnisteen (esim. molemmat HUSB, koska
+   sukupuoli on tuntematon), jälkimmäinen rivi ylikirjoittaisi tuonnissa ensimmäisen ja toinen
+   vanhempi katoaisi puusta kokonaan. Sukupuoli ratkaisee roolin kun se tunnetaan; muutoin
+   roolit jaetaan silti aina kahdelle eri tunnisteelle henkilöiden järjestyksen mukaan. */
+function assignFamRoles(parentIds){
+  if(parentIds.length <= 1){
+    return parentIds.map(pid=>{
+      const person = personById(pid);
+      return { pid, tag: (person && person.sukupuoli==='nainen') ? 'WIFE' : 'HUSB' };
+    });
+  }
+  const [a,b] = parentIds;
+  const pa = personById(a), pb = personById(b);
+  if(pa && pa.sukupuoli==='nainen' && !(pb && pb.sukupuoli==='nainen')){
+    return [{pid:b, tag:'HUSB'}, {pid:a, tag:'WIFE'}];
+  }
+  if(pb && pb.sukupuoli==='nainen' && !(pa && pa.sukupuoli==='nainen')){
+    return [{pid:a, tag:'HUSB'}, {pid:b, tag:'WIFE'}];
+  }
+  // Molemmat naisia, molemmat miehiä, tai sukupuoli tuntematon: silti kaksi ERI tunnistetta,
+  // jottei kumpikaan vanhempi katoa tuonnissa.
+  return [{pid:a, tag:'HUSB'}, {pid:b, tag:'WIFE'}];
+}
+
+function exportGedcom(){
+  const lines = [];
+  lines.push('0 HEAD');
+  lines.push('1 SOUR Sukupuu');
+  lines.push('1 GEDC');
+  lines.push('2 VERS 5.5.1');
+  lines.push('2 FORM LINEAGE-LINKED');
+  lines.push('1 CHAR UTF-8');
+  lines.push(...gedLines(1, 'NOTE', 'Viety Sukupuu-sovelluksesta: ' + (state.treeName||'Sukupuu')));
+
+  const indiRef = {};
+  state.persons.forEach((p,i)=>{ indiRef[p.id] = '@I'+(i+1)+'@'; });
+
+  // Perheet: ensisijaisesti state.unions, lisäksi mahdolliset yhden/kahden vanhemman
+  // vanhempisuhteet joille ei ole erillistä liitto-tietuetta.
+  const famKeyOf = ids => ids.slice().sort().join('|');
+  const families = {}; // key -> {parentIds:[...], union, childIds:[...]}
+  state.unions.forEach(u=>{
+    const key = famKeyOf(u.personIds);
+    families[key] = { parentIds: u.personIds.slice(), union: u, childIds: [] };
+  });
+  state.persons.forEach(p=>{
+    if(!p.parentIds || !p.parentIds.length) return;
+    const key = famKeyOf(p.parentIds);
+    if(!families[key]) families[key] = { parentIds: p.parentIds.slice(), union: null, childIds: [] };
+    families[key].childIds.push(p.id);
+  });
+  const famRef = {};
+  Object.keys(families).forEach((key,i)=>{ famRef[key] = '@F'+(i+1)+'@'; });
+
+  state.persons.forEach(p=>{
+    lines.push(`0 ${indiRef[p.id]} INDI`);
+    const given = p.etunimi||'';
+    const surnameDisplay = displaySukunimi(p);
+    lines.push(...gedLines(1,'NAME', `${given} /${surnameDisplay}/`));
+    if(given) lines.push(...gedLines(2,'GIVN', given));
+    if(p.sukunimi) lines.push(...gedLines(2,'SURN', p.sukunimi));
+    lines.push(`1 SEX ${gedcomSex(p)}`);
+    if(p.syntAika || p.syntPaikka){
+      lines.push('1 BIRT');
+      if(p.syntAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.syntAika)));
+      if(p.syntPaikka) lines.push(...gedLines(2,'PLAC', p.syntPaikka));
+    }
+    if(p.kuolAika || p.kuolPaikka){
+      lines.push('1 DEAT');
+      if(p.kuolAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.kuolAika)));
+      if(p.kuolPaikka) lines.push(...gedLines(2,'PLAC', p.kuolPaikka));
+    }
+    if(p.hautaAika || p.hautaPaikka){
+      lines.push('1 BURI');
+      if(p.hautaAika) lines.push(...gedLines(2,'DATE', finDateToGedcom(p.hautaAika)));
+      if(p.hautaPaikka) lines.push(...gedLines(2,'PLAC', p.hautaPaikka));
+    }
+    if(p.ammatti) lines.push(...gedLines(1,'OCCU', p.ammatti));
+    if(p.kuvaus) lines.push(...gedLines(1,'NOTE', p.kuvaus));
+    if(p.yDna) lines.push(...gedLines(1,'_YDNA', p.yDna));
+    if(p.mtDna) lines.push(...gedLines(1,'_MTDNA', p.mtDna));
+    if(p.sukunimiKuollessa) lines.push(...gedLines(1,'_SURN_KUOLLESSA', p.sukunimiKuollessa));
+    if(p.patronyymi) lines.push(...gedLines(1,'_PATRONYYMI', p.patronyymi));
+    if(p.nimiValinta) lines.push(...gedLines(1,'_NIMIVALINTA', p.nimiValinta));
+    (p.customFields||[]).forEach(cf=>{
+      if(cf.avain || cf.arvo) lines.push(...gedLines(1,'NOTE', `${cf.avain||''}: ${cf.arvo||''}`));
+    });
+    if(p.parentIds && p.parentIds.length){
+      const key = famKeyOf(p.parentIds);
+      if(famRef[key]) lines.push(`1 FAMC ${famRef[key]}`);
+    }
+    Object.keys(families).forEach(key=>{
+      if(families[key].parentIds.includes(p.id)) lines.push(`1 FAMS ${famRef[key]}`);
+    });
+  });
+
+  Object.keys(families).forEach(key=>{
+    const fam = families[key];
+    lines.push(`0 ${famRef[key]} FAM`);
+    assignFamRoles(fam.parentIds).forEach(({pid,tag})=>{
+      if(indiRef[pid]) lines.push(`1 ${tag} ${indiRef[pid]}`);
+    });
+    fam.childIds.forEach(cid=>{ if(indiRef[cid]) lines.push(`1 CHIL ${indiRef[cid]}`); });
+    if(fam.union){
+      lines.push('1 MARR');
+      if(fam.union.tyyppi && fam.union.tyyppi!=='avioliitto') lines.push(...gedLines(2,'TYPE', fam.union.tyyppi));
+      if(fam.union.alkoi) lines.push(...gedLines(2,'DATE', finDateToGedcom(fam.union.alkoi)));
+      if(fam.union.paikka) lines.push(...gedLines(2,'PLAC', fam.union.paikka));
+      if(fam.union.paattyi) lines.push(...gedLines(2,'_END_DATE', finDateToGedcom(fam.union.paattyi)));
+    }
+  });
+
+  lines.push('0 TRLR');
+  const gedText = lines.join('\r\n') + '\r\n';
+  const blob = new Blob([gedText], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.treeName||'sukupuu').replace(/[^a-zA-Z0-9äöåÄÖÅ_ -]/g,'').trim() || 'sukupuu';
+  a.href = url; a.download = safeName + '.ged';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+/* Tulkitsee .ged-tiedoston tavut oikealla merkistöllä. GEDCOM-tiedostoissa merkistö vaihtelee
+   ohjelmasta riippuen (moderni vienti on yleensä UTF-8, mutta vanhempi tai muun ohjelman
+   tuottama tiedosto ilmoittaa usein "1 CHAR ANSI" ja käyttää tosiasiassa Windows-1252/Latin-1
+   -tavutusta ä/ö/å-kirjaimille) - jos tiedosto luettaisiin aina pelkkänä UTF-8:na, nämä
+   kirjaimet näkyisivät vääristyneinä ("?"-merkkeinä). Otsikko-osan (HEAD/SOUR/GEDC/CHAR) rivit
+   ovat aina puhdasta ASCII:a, joten se voidaan lukea turvallisesti merkistöstä riippumatta
+   CHAR-rivin löytämiseksi, ja koko tiedosto tulkitaan sitten sen mukaisella merkistöllä. */
+function decodeGedcomBuffer(buffer){
+  const bytes = new Uint8Array(buffer);
+  if(bytes.length>=3 && bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF){
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if(bytes.length>=2 && bytes[0]===0xFF && bytes[1]===0xFE){
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if(bytes.length>=2 && bytes[0]===0xFE && bytes[1]===0xFF){
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+  const headChunk = new TextDecoder('windows-1252').decode(bytes.subarray(0, Math.min(bytes.length, 4000)));
+  const m = headChunk.match(/\n1\s+CHAR\s+([A-Za-z0-9_-]+)/i) || headChunk.match(/^1\s+CHAR\s+([A-Za-z0-9_-]+)/im);
+  const charset = m ? m[1].toUpperCase() : 'UTF-8';
+  let encoding;
+  if(charset==='UTF-8' || charset==='UTF8') encoding = 'utf-8';
+  else if(charset==='UNICODE') encoding = 'utf-16le';
+  else encoding = 'windows-1252'; // ANSI, ANSEL, ASCII, IBMPC ja muut vanhat merkistöt: paras lähestymä
+  try{
+    return new TextDecoder(encoding, {fatal:false}).decode(bytes);
+  }catch(e){
+    return new TextDecoder('utf-8', {fatal:false}).decode(bytes);
+  }
+}
+
+/* Jäsentää raa'an .ged-tiedoston sisällön GEDCOM-tietueiksi: [{level, tag, xref, value}] */
+function parseGedcomLines(text){
+  const rawLines = text.split(/\r\n|\r|\n/);
+  const records = [];
+  rawLines.forEach(raw=>{
+    if(!raw.trim()) return;
+    const m = raw.match(/^\s*(\d+)\s+(@[^@]+@\s+)?([A-Za-z_][A-Za-z0-9_]*)\s?(.*)$/);
+    if(!m) return;
+    const level = parseInt(m[1],10);
+    const xref = m[2] ? m[2].trim() : null;
+    const tag = m[3];
+    const value = m[4]||'';
+    if(tag==='CONT' && records.length){ records[records.length-1].value += '\n' + value; return; }
+    if(tag==='CONC' && records.length){ records[records.length-1].value += value; return; }
+    records.push({level, tag, xref, value});
+  });
+  return records;
+}
+
+function importGedcomText(text){
+  const records = parseGedcomLines(text);
+  const persons = [];
+  const unions = [];
+  const personByXref = {};
+  const famByXref = {};
+
+  let i = 0;
+  while(i < records.length){
+    const rec = records[i];
+    if(rec.level===0 && rec.xref && rec.tag==='INDI'){
+      const p = blankPerson();
+      p.id = genId();
+      personByXref[rec.xref] = { person: p, famc: [], fams: [] };
+      let j = i+1;
+      let nameSet = false;
+      while(j < records.length && records[j].level > 0){
+        const r = records[j];
+        if(r.level===1){
+          if(r.tag==='NAME' && !nameSet){
+            const nm = r.value.match(/^([^\/]*)\/([^\/]*)\/?\s*$/);
+            if(nm){ p.etunimi = nm[1].trim(); p.sukunimi = nm[2].trim(); }
+            else { p.etunimi = r.value.trim(); }
+            // GIVN/SURN ovat NAME:n alitageja (yksi taso syvemmällä) ja ovat AINA ensisijaisia
+            // NAME-rivin sukunimiosaan nähden, koska NAME:n sukunimiosa saattaa (nimiValinta-
+            // asetuksen mukaan) näyttää kuolinajan sukunimeä tai patronyymiä syntymäsukunimen
+            // sijaan - vain SURN on aina täsmälleen syntymäsukunimi.
+            let k = j+1;
+            while(k < records.length && records[k].level > r.level){
+              if(records[k].tag==='GIVN') p.etunimi = records[k].value.trim();
+              if(records[k].tag==='SURN') p.sukunimi = records[k].value.trim();
+              k++;
+            }
+            j = k-1;
+            nameSet = true;
+          } else if(r.tag==='SEX'){
+            p.sukupuoli = r.value.trim()==='M' ? 'mies' : (r.value.trim()==='F' ? 'nainen' : '');
+          } else if(r.tag==='OCCU'){
+            p.ammatti = r.value.trim();
+          } else if(r.tag==='NOTE'){
+            p.kuvaus = p.kuvaus ? (p.kuvaus + '\n' + r.value) : r.value;
+          } else if(r.tag==='_YDNA'){
+            p.yDna = r.value.trim();
+          } else if(r.tag==='_MTDNA'){
+            p.mtDna = r.value.trim();
+          } else if(r.tag==='_SURN_KUOLLESSA'){
+            p.sukunimiKuollessa = r.value.trim();
+          } else if(r.tag==='_PATRONYYMI'){
+            p.patronyymi = r.value.trim();
+          } else if(r.tag==='_NIMIVALINTA'){
+            p.nimiValinta = r.value.trim();
+          } else if(r.tag==='FAMC'){
+            personByXref[rec.xref].famc.push(r.value.trim());
+          } else if(r.tag==='FAMS'){
+            personByXref[rec.xref].fams.push(r.value.trim());
+          } else if(r.tag==='BIRT' || r.tag==='DEAT' || r.tag==='BURI'){
+            let k = j+1;
+            let date='', plac='';
+            while(k < records.length && records[k].level > 1){
+              if(records[k].tag==='DATE') date = gedcomDateToFin(records[k].value);
+              if(records[k].tag==='PLAC') plac = records[k].value.trim();
+              k++;
+            }
+            if(r.tag==='BIRT'){ p.syntAika = date; p.syntPaikka = plac; }
+            else if(r.tag==='DEAT'){ p.kuolAika = date; p.kuolPaikka = plac; }
+            else { p.hautaAika = date; p.hautaPaikka = plac; }
+            j = k-1;
+          }
+        }
+        j++;
+      }
+      persons.push(p);
+      i = j;
+      continue;
+    }
+    if(rec.level===0 && rec.xref && rec.tag==='FAM'){
+      const fam = { husb:null, wife:null, chil:[], marr:null };
+      famByXref[rec.xref] = fam;
+      let j = i+1;
+      while(j < records.length && records[j].level > 0){
+        const r = records[j];
+        if(r.level===1){
+          if(r.tag==='HUSB'){
+            // Puolustava varalta: GEDCOM sallii vain yhden HUSB-rivin per perhe, mutta jos
+            // tiedostossa (esim. muun ohjelman viemänä) niitä olisi silti kaksi, ei toista
+            // vanhempaa haluta hiljaisesti hukata - sijoitetaan ylimääräinen wife-paikalle.
+            if(!fam.husb) fam.husb = r.value.trim();
+            else if(!fam.wife) fam.wife = r.value.trim();
+          }
+          else if(r.tag==='WIFE'){
+            if(!fam.wife) fam.wife = r.value.trim();
+            else if(!fam.husb) fam.husb = r.value.trim();
+          }
+          else if(r.tag==='CHIL') fam.chil.push(r.value.trim());
+          else if(r.tag==='MARR'){
+            const marr = {tyyppi:'avioliitto', alkoi:'', paikka:'', paattyi:''};
+            let k = j+1;
+            while(k < records.length && records[k].level > 1){
+              if(records[k].tag==='DATE') marr.alkoi = gedcomDateToFin(records[k].value);
+              if(records[k].tag==='PLAC') marr.paikka = records[k].value.trim();
+              if(records[k].tag==='TYPE') marr.tyyppi = records[k].value.trim();
+              if(records[k].tag==='_END_DATE') marr.paattyi = gedcomDateToFin(records[k].value);
+              k++;
+            }
+            fam.marr = marr;
+            j = k-1;
+          }
+        }
+        j++;
+      }
+      i = j;
+      continue;
+    }
+    i++;
+  }
+
+  // Perheiden puolisot -> unions
+  Object.keys(famByXref).forEach((fx,idx)=>{
+    const fam = famByXref[fx];
+    const ids = [fam.husb, fam.wife].filter(Boolean).map(x=>personByXref[x] && personByXref[x].person.id).filter(Boolean);
+    if(ids.length===2){
+      const m = fam.marr || {tyyppi:'avioliitto', alkoi:'', paikka:'', paattyi:''};
+      unions.push({ id: genId(), personIds: ids, tyyppi: m.tyyppi||'avioliitto', alkoi:m.alkoi||'', paikka:m.paikka||'', paattyi:m.paattyi||'', huomiot:'' });
+    }
+    fam._husbId = ids[0] && fam.husb ? (personByXref[fam.husb]&&personByXref[fam.husb].person.id) : null;
+    fam._wifeId = fam.wife ? (personByXref[fam.wife]&&personByXref[fam.wife].person.id) : null;
+  });
+
+  // Lasten vanhempisuhteet FAMC-viittausten kautta
+  Object.keys(personByXref).forEach(xref=>{
+    const entry = personByXref[xref];
+    if(!entry.famc.length) return;
+    const fam = famByXref[entry.famc[0]];
+    if(!fam) return;
+    const parentIds = [];
+    if(fam.husb && personByXref[fam.husb]) parentIds.push(personByXref[fam.husb].person.id);
+    if(fam.wife && personByXref[fam.wife]) parentIds.push(personByXref[fam.wife].person.id);
+    entry.person.parentIds = parentIds;
+  });
+
+  if(!persons.length){ throw new Error('Tiedostosta ei löytynyt yhtään henkilöä (INDI-tietuetta).'); }
+
+  return { treeName: 'Tuotu GEDCOM-sukupuu', persons, unions, events: [] };
+}
+
+function importGedcom(text, fileLabel){
+  try{
+    const data = importGedcomText(text);
+    state = data;
+    invalidateIndexes(); // state vaihdettu kokonaan
+    ui.selectedPersonId = null;
+    ui.rootId = state.persons[0] ? state.persons[0].id : null;
+    ui.fileHandle = null;
+    closeEditor();
+    syncUiControlsFromState();
+    autoBackup();
+    refreshAll();
+    setFileStatus('Tuotu GEDCOM-tiedostosta' + (fileLabel ? (': '+fileLabel) : ''));
+  }catch(err){
+    console.error(err);
+    alert('GEDCOM-tiedoston tuonti epäonnistui: ' + err.message);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   MODAALI (yksinkertainen valinta-/lisäysikkuna)
+--------------------------------------------------------------------- */
+function showModal(title, bodyHtml, onOk){
+  const overlay = document.getElementById('modalOverlay');
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  overlay.classList.add('open');
+  const okBtn = document.getElementById('modalOk');
+  const cancelBtn = document.getElementById('modalCancel');
+  function cleanup(){
+    overlay.classList.remove('open');
+    okBtn.onclick = null; cancelBtn.onclick = null;
+  }
+  okBtn.onclick = () => { const res = onOk(); if(res !== false) cleanup(); };
+  cancelBtn.onclick = cleanup;
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+
+/* Valintalista (esim. "valitse vanhempi/lapsi, kun niitä on useampia") */
+function showChoiceModal(title, choices){
+  return new Promise(resolve=>{
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalBody').innerHTML = choices.map(c=>
+      `<button class="small-btn nav-pick" data-id="${c.id}" style="display:block;width:100%;text-align:left;margin-bottom:6px;">${escapeHtml(c.label)}</button>`
+    ).join('');
+    const okBtn = document.getElementById('modalOk');
+    const cancelBtn = document.getElementById('modalCancel');
+    okBtn.style.display = 'none';
+    overlay.classList.add('open');
+    function cleanup(result){
+      overlay.classList.remove('open');
+      okBtn.style.display = '';
+      cancelBtn.onclick = null;
+      document.querySelectorAll('#modalBody .nav-pick').forEach(b=>{ b.onclick = null; });
+      resolve(result);
+    }
+    cancelBtn.onclick = ()=>cleanup(null);
+    document.querySelectorAll('#modalBody .nav-pick').forEach(btn=>{
+      btn.onclick = ()=>cleanup(btn.dataset.id);
+    });
+  });
+}
+
+/* Puussa siirtyminen ylös-/alaspäin nuolinapeista */
+async function navigateToParent(personId){
+  const p = personById(personId);
+  if(!p) return;
+  const parents = (p.parentIds||[]).map(personById).filter(Boolean);
+  if(!parents.length) return;
+  let targetId = parents[0].id;
+  if(parents.length > 1){
+    targetId = await showChoiceModal('Valitse vanhempi', parents.map(pp=>({id:pp.id, label:fullName(pp)})));
+  }
+  if(!targetId) return;
+  ui.rootId = targetId;
+  renderRootSelect();
+  renderTree();
+  fitToView();
+}
+async function navigateToChild(personId){
+  const kids = childrenOf(personId).sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'));
+  if(!kids.length) return;
+  let targetId = kids[0].id;
+  if(kids.length > 1){
+    targetId = await showChoiceModal('Valitse lapsi', kids.map(k=>({id:k.id, label:fullName(k)})));
+  }
+  if(!targetId) return;
+  ui.rootId = targetId;
+  renderRootSelect();
+  renderTree();
+  fitToView();
+}
+
+/* ---------------------------------------------------------------------
+   HENKILÖLISTA (sivupalkki)
+--------------------------------------------------------------------- */
+function renderPersonList(){
+  const q = (document.getElementById('searchBox').value||'').toLowerCase().trim();
+  const listEl = document.getElementById('personList');
+  const sorted = [...state.persons].sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'));
+  const filtered = q ? sorted.filter(p => fullName(p).toLowerCase().includes(q)) : sorted;
+  listEl.innerHTML = filtered.map(p => `
+    <div class="person-row ${p.id===ui.selectedPersonId?'active':''}" data-id="${p.id}">
+      <div class="avatar">${p.valokuva ? `<img src="${p.valokuva}">` : escapeHtml(initials(p))}</div>
+      <div>
+        <div class="pname">${escapeHtml(fullName(p))}</div>
+        <div class="pdates">${escapeHtml(lifeSpan(p))}</div>
+      </div>
+    </div>
+  `).join('') || `<div class="muted" style="padding:14px;">Ei tuloksia.</div>`;
+  document.getElementById('personCount').textContent = state.persons.length + ' henkilöä';
+
+  listEl.querySelectorAll('.person-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      openEditor(row.dataset.id);
+    });
+  });
+}
+
+/* ---------------------------------------------------------------------
+   JUURI- JA ASETUSVALIKOT
+--------------------------------------------------------------------- */
+function renderRootSelect(){
+  const sel = document.getElementById('rootSelect');
+  const sorted = [...state.persons].sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'));
+  sel.innerHTML = sorted.map(p=>`<option value="${p.id}">${escapeHtml(fullName(p))}</option>`).join('');
+  if(ui.rootId && personById(ui.rootId)){
+    sel.value = ui.rootId;
+  } else if(sorted.length){
+    ui.rootId = sorted[0].id;
+    sel.value = ui.rootId;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   SUKUPUUN ASEMOINTI JA PIIRTO (SVG)
+--------------------------------------------------------------------- */
+const NODE_W = 150, NODE_H = 76, GEN_GAP = 130, SIB_GAP = 24;
+
+// Sisarusten/muiden kumppanien piilotus perustuu jäljitykseen siitä, MIKSI kukin
+// henkilö (juurta lukuun ottamatta) ylipäätään näytetään puussa:
+//  - "discoveredVia[id]" = sen lapsen id, jonka kautta 'id' löytyi esivanhempana
+//    BFS:n 'vanhemmat'-askeleessa (esim. Liisan äiti löytyi Liisan kautta).
+//  - "forcedSpouseMap[id]" = sen henkilön id, jonka PUOLISONA 'id' lisättiin puuhun
+//    ilman erillistä esivanhempi-linkkiä (esim. juuren oma puoliso, tai jälkeläisen
+//    puoliso). Tätä käytetään, kun 'id' itsellään ei ole esivanhempilinkkiä, mutta
+//    hänen omat muut kumppaninsa halutaan silti piilottaa "Piilota muut kumppanit"
+//    -asetuksella - juuri PL/muut kumppanit -tapauksessa tämä esti mm. juuren oman
+//    puolison entisen/toisen kumppanin ja tämän suvun näkymisen puussa.
+// Molemmat periytyvät eteenpäin (lapselle/puolisolle), joten suodatus toimii oikein
+// riippumatta siitä, onko kyseessä juuren oma linja, juuren puolison linja vai minkä
+// tahansa jälkeläisen puolison linja - eli sukupolvi-/etäisyysriippumattomasti juuresta.
+function computeGenerations(rootId, up, down, hideSiblings, hideOtherPartners){
+  if(!rootId || !personById(rootId)) return {};
+  const filtering = hideSiblings || hideOtherPartners;
+  const gen = {};
+  const discoveredVia = {};   // id -> lapsen id (esivanhempi-linkki)
+  const forcedSpouseMap = {}; // id -> henkilön id, jonka puolisona 'id' lisättiin
+  // Valitun profiilin (juuren) oman kumppanin esivanhempia (vanhemmat, isovanhemmat, jne.)
+  // ei näytetä lainkaan - tämä pätee AINA, riippumatta "Sukupolvia ylös" -asetuksesta
+  // tai "Piilota muut kumppanit" -valinnasta, jotta puu ei paisu kumppanin koko suvun
+  // verran. Kumppani itse ja hänen mahdolliset omat lapsensa/puolisonsa näkyvät silti.
+  const blockedAncestors = new Set(); // näiden henkilöiden omat vanhemmat jätetään aina pois
+  // Profiilikohtainen "Piilota profiili sukupuussa" -asetus: henkilö ei tule puuhun
+  // näkyviin lainkaan (paitsi jos hänet on itse valittu juureksi).
+  function isProfileHidden(pid){
+    const person = personById(pid);
+    return !!(person && person.piilotaProfiili && pid !== rootId);
+  }
+  gen[rootId] = 0;
+  const queue = [rootId];
+  while(queue.length){
+    const id = queue.shift();
+    const g = gen[id];
+    const p = personById(id);
+    if(!p) continue;
+
+    // Onko 'id':n omaa lasten/puolisoiden näyttämistä rajoitettava, ja jos on,
+    // kenen kautta (anchorChild = esivanhempi-tapauksen "tunnettu" jatkumo-lapsi,
+    // pidetään aina näkyvissä myös hideSiblings-tilassa).
+    let restricted = false, relevantSpouseId = null, anchorChild = null;
+    if(filtering && id !== rootId){
+      if(discoveredVia[id]){
+        anchorChild = discoveredVia[id];
+        const childPerson = personById(anchorChild);
+        relevantSpouseId = childPerson ? ((childPerson.parentIds||[]).find(pid => pid !== id) || null) : null;
+        restricted = true;
+      } else if(forcedSpouseMap[id]){
+        relevantSpouseId = forcedSpouseMap[id];
+        restricted = true;
+      }
+    }
+
+    // vanhemmat
+    if(g > -up && !blockedAncestors.has(id)){
+      (p.parentIds||[]).forEach(pid=>{
+        if(personById(pid) && !(pid in gen) && !isProfileHidden(pid)){
+          gen[pid] = g-1;
+          discoveredVia[pid] = id;
+          queue.push(pid);
+        }
+      });
+    }
+    // Profiilikohtainen manuaalinen näkymäasetus: "Piilota kumppanit ja lapset
+    // sukupuussa" - jos tämän henkilön kohdalla on rastitettu, hänen kumppaninsa
+    // ja lapsensa piilotetaan tästä eteenpäin AINA, riippumatta muista puun
+    // asetuksista. Hänen omat vanhempansa (esivanhempien suunta) näkyvät silti.
+    const hidePartnersAndChildren = !!p.piilotaPuolisotJaLapset;
+
+    // lapset
+    if(g < down && !hidePartnersAndChildren){
+      childrenOf(id).forEach(c=>{
+        if(restricted && c.id !== anchorChild){
+          if(hideSiblings) return; // piilota kaikki muut lapset (myös puolisisarukset)
+          if(hideOtherPartners && !(relevantSpouseId && (c.parentIds||[]).includes(relevantSpouseId))) return;
+        }
+        if(!(c.id in gen) && !isProfileHidden(c.id)){ gen[c.id] = g+1; queue.push(c.id); }
+      });
+    }
+    // puolisot (samalla tasolla)
+    if(!hidePartnersAndChildren){
+      if(restricted && hideOtherPartners){
+        // säilytä vain olennainen puoliso, muut kumppanit piilotetaan
+        spousesOf(id).forEach(({person:sp})=>{
+          if(sp && sp.id === relevantSpouseId && !(sp.id in gen) && !isProfileHidden(sp.id)){
+            gen[sp.id] = g;
+            if(anchorChild) discoveredVia[sp.id] = anchorChild; // periytä sama suoran linjan jatkumo-lapsi
+            // kuka tahansa PUOLISON kautta (ei veren kautta) puuhun tullut henkilö on
+            // aina lanko/anoppi - hänen omia esivanhempiaan ei koskaan näytetä
+            blockedAncestors.add(sp.id);
+            queue.push(sp.id);
+          }
+        });
+      } else {
+        // ei rajoitusta (juuri, suoran linjan jälkeläinen, tai suodatus pois päältä) -
+        // merkitään lisätyt puolisot, jotta HEIDÄN omat muut kumppaninsa voidaan
+        // tarvittaessa rajoittaa myöhemmin.
+        spousesOf(id).forEach(({person:sp})=>{
+          if(sp && !(sp.id in gen) && !isProfileHidden(sp.id)){
+            gen[sp.id] = g;
+            if(hideOtherPartners) forcedSpouseMap[sp.id] = id;
+            // kuka tahansa kenen tahansa puun jäsenen KUMPPANI on (juuren oma, lapsen,
+            // lapsenlapsen jne.) - hänen omia vanhempiaan/esivanhempiaan ei näytetä koskaan
+            blockedAncestors.add(sp.id);
+            queue.push(sp.id);
+          }
+        });
+      }
+    }
+  }
+  return gen;
+}
+
+function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartners){
+  const gen = computeGenerations(rootId, up, down, hideSiblings, hideOtherPartners);
+  const ids = Object.keys(gen);
+  if(!ids.length) return {nodes:[], links:[]};
+
+  // gen-akseli (sukupolvien suunta) / sib-akseli (sisarusten suunta) riippuen suunnasta
+  const genSize = orientation === 'vertical' ? NODE_H : NODE_W;
+  const sibSize = orientation === 'vertical' ? NODE_W : NODE_H;
+  const genUnit = genSize + GEN_GAP;
+  const sibUnit = sibSize + SIB_GAP;
+  function pt(genVal, sibVal){ return orientation === 'vertical' ? {x:sibVal, y:genVal} : {x:genVal, y:sibVal}; }
+
+  // ---------------------------------------------------------------------
+  // Keskitetty, symmetrinen sijoittelu: lähtöhenkilö (juuri) on aina tarkalleen
+  // sib-akselin nollakohdassa, hänen esivanhempansa keskittyvät symmetrisesti
+  // hänen oman sijaintinsa ylä-/taakse-puolelle sukupolvi kerrallaan, ja hänen
+  // jälkeläisensä keskittyvät (puolisonsa kanssa) hänen alapuolelleen. Puu ei
+  // enää "ajaudu" sivuun, koska joka haara lasketaan aina suhteessa juureen,
+  // ei rivin sisäisenä juoksevana indeksinä.
+  const sibPos = {};
+  const positioned = new Set();
+  const memoDescW = new Map();
+
+  function primarySpouseOf(id){
+    const sps = spousesOf(id).filter(({person:sp})=>sp && sp.id in gen && gen[sp.id]===gen[id]);
+    return sps.length ? sps[0].person.id : null;
+  }
+  function visibleChildrenOf(id){
+    return childrenOf(id).filter(c=>c.id in gen && gen[c.id]===gen[id]+1);
+  }
+  function visibleParentsOf(id){
+    return (personById(id).parentIds||[]).filter(pid=>pid in gen && gen[pid]===gen[id]-1);
+  }
+
+  function descendantWidth(id){
+    if(memoDescW.has(id)) return memoDescW.get(id);
+    memoDescW.set(id, 1); // suoja mahdollisia poikkeustapauksia vastaan
+    const sp = primarySpouseOf(id);
+    const own = sp ? 2 : 1;
+    const kids = visibleChildrenOf(id);
+    const w = kids.length ? Math.max(own, kids.reduce((s,c)=>s+descendantWidth(c.id),0)) : own;
+    memoDescW.set(id, w);
+    return w;
+  }
+  // Esivanhempien sijoittelu tehdään ERI menetelmällä kuin jälkeläisten: sen sijaan,
+  // että jokainen esivanhempi keskitettäisiin oman (leveyspainotetun) "siivunsa"
+  // keskelle - mikä ajautuu vinoon heti kun toisen puolen sukuhaara on huomattavasti
+  // syvempi/leveämpi kuin toisen - jokainen esivanhempi (isä/äiti) asetetaan aina
+  // TARKALLEEN oman kahden vanhempansa keskiarvoon. "Lehti"-esivanhemmille (joiden omia
+  // vanhempia ei tunneta) annetaan juokseva kokonaislukupaikka syvyyssuuntaisessa
+  // (isä ensin, äiti sitten) järjestyksessä. Tämä takaa MATEMAATTISESTI, että jokainen
+  // pariskunta on aina tarkalleen keskitetty oman lapsensa yläpuolelle - myös silloin
+  // kun toisen puolison sukuhaara on tuntematon/matala ja toisen hyvin syvä - eikä
+  // päällekkäisyyksiä synny, koska jokainen sukuhaara saa oman, muista erillisen,
+  // yhtenäisen "lehtialueensa".
+  function computeAncestorRaw(id, counterRef, rawX){
+    const parents = visibleParentsOf(id);
+    let x;
+    if(parents.length===0){
+      x = counterRef.n; counterRef.n += 1;
+    } else if(parents.length===1){
+      x = computeAncestorRaw(parents[0], counterRef, rawX);
+    } else {
+      const orderedIds = orderedParentIds(personById(id)).filter(pid=>parents.includes(pid));
+      const [p1,p2] = orderedIds.length===2 ? orderedIds : parents;
+      const x1 = computeAncestorRaw(p1, counterRef, rawX);
+      const x2 = computeAncestorRaw(p2, counterRef, rawX);
+      x = (x1+x2)/2;
+    }
+    rawX[id] = x;
+    return x;
+  }
+
+  // Jälkeläiset: sijoittaa henkilön 'id' (ja hänen puolisonsa, jos näkyvissä)
+  // keskitetysti annettuun sib-keskikohtaan, ja jatkaa rekursiivisesti lapsiin.
+  function positionDescendants(id, sibCenter){
+    if(positioned.has(id)) return;
+    const sp = primarySpouseOf(id);
+    const hasSp = sp && !positioned.has(sp);
+    // Törmäyksen esto: jos tälle riville on jo sijoitettu joku toinen (esim. varasijoittelusta
+    // kaskadoitunut haara osuisi muutoin päällekkäin toisen suvunhaaran kanssa), siirretään
+    // koko keskikohtaa oikealle kunnes tila on vapaa. Juuren/kantalinjan ensisijaisessa
+    // sijoittelussa tätä riviä ei vielä ole muilla varattu, joten tämä ei muuta niiden tulosta.
+    let center = sibCenter;
+    const minGap = hasSp ? sibUnit*1.4 : sibUnit*0.9;
+    let tries = 0;
+    while(true){
+      const rowNodes = ids.filter(other=>gen[other]===gen[id] && positioned.has(other) && other!==id && other!==sp);
+      if(!rowNodes.some(other=>Math.abs(sibPos[other]-center) < minGap) || tries>=300) break;
+      center += sibUnit; tries++;
+    }
+    if(hasSp){
+      sibPos[id] = center - sibUnit/2; positioned.add(id);
+      sibPos[sp] = center + sibUnit/2; positioned.add(sp);
+    } else {
+      sibPos[id] = center; positioned.add(id);
+    }
+    layoutChildrenOf(id, center);
+  }
+  function layoutChildrenOf(id, anchorCenter){
+    const kids = visibleChildrenOf(id).filter(c=>!positioned.has(c.id));
+    if(!kids.length) return;
+    const totalW = kids.reduce((s,c)=>s+descendantWidth(c.id),0);
+    let cursor = anchorCenter - totalW*sibUnit/2;
+    kids.forEach(c=>{
+      const w = descendantWidth(c.id);
+      positionDescendants(c.id, cursor + w*sibUnit/2);
+      cursor += w*sibUnit;
+    });
+  }
+
+  // 1) Juuri aina tarkalleen sib=0, puoliso (jos näkyvissä) heti hänen vierelleen,
+  //    lapset keskitetään pariskunnan (tai pelkän juuren) keskikohdan alle.
+  positionDescendants(rootId, 0);
+  // positionDescendants keskittää PARISKUNNAN (juuri+puoliso) ympäri annetun kohdan -
+  // jolloin juuri itse voi päätyä hieman sivuun (esim. -87 jos puoliso viedään +87).
+  // Siirretään koko jo sijoitettu joukko (juuri+puoliso+heidän jälkeläisensä) jäykkänä
+  // kokonaisuutena niin että JUURI päätyy tarkalleen sib=0:aan, puolison etäisyyden
+  // juuresta säilyessä silti ennallaan.
+  const rootShift = 0 - sibPos[rootId];
+  if(rootShift){
+    positioned.forEach(id=>{ sibPos[id] += rootShift; });
+  }
+
+  // 2) Juuren omat esivanhemmat: laske ensin koko esivanhempipuun raa'at sib-arvot
+  //    (juuri mukaan lukien, ks. yllä), ja siirrä koko joukko niin että juuren oma
+  //    laskettu arvo osuu tarkalleen sen jo kiinnitettyyn pikselisijaintiin (0).
+  const ancestorRawX = {};
+  computeAncestorRaw(rootId, {n:0}, ancestorRawX);
+  const ancestorShift = sibPos[rootId] - ancestorRawX[rootId]*sibUnit;
+  Object.keys(ancestorRawX).forEach(id=>{
+    if(positioned.has(id)) return; // juuri itse on jo kiinnitetty
+    sibPos[id] = ancestorRawX[id]*sibUnit + ancestorShift;
+    positioned.add(id);
+  });
+
+  // 3) Varasijoittelu lopuille näkyville henkilöille, joita pääalgoritmi ei tavoittanut
+  //    (esim. esivanhemman sisarukset "Piilota sisarukset" pois päältä, tai ylimääräiset
+  //    kumppanit kun "Piilota muut kumppanit" ei ole päällä). Pyritään sijoittamaan lähelle
+  //    jo tunnettua sukulaista/kumppania samalla rivillä, törmäyksiä välttäen.
+  const remaining = ids.filter(id=>!positioned.has(id)).sort((a,b)=>gen[a]-gen[b]);
+  remaining.forEach(id=>{
+    if(positioned.has(id)) return;
+    const p = personById(id);
+    const candidates = [];
+    spousesOf(id).forEach(({person:sp})=>{ if(sp && positioned.has(sp.id) && gen[sp.id]===gen[id]) candidates.push(sibPos[sp.id]+sibUnit); });
+    (p.parentIds||[]).forEach(pid=>{ if(positioned.has(pid) && gen[pid]===gen[id]-1) candidates.push(sibPos[pid]); });
+    visibleChildrenOf(id).forEach(c=>{ if(positioned.has(c.id)) candidates.push(sibPos[c.id]); });
+    let center = candidates.length ? candidates[0] : 0;
+    const rowPositioned = ids.filter(other=>gen[other]===gen[id] && positioned.has(other));
+    let tries = 0;
+    while(rowPositioned.some(other=>Math.abs(sibPos[other]-center) < sibUnit*0.9) && tries<300){ center += sibUnit; tries++; }
+    sibPos[id] = center; positioned.add(id);
+    layoutChildrenOf(id, center);
+  });
+
+  const nodes = ids.map(id=>{
+    const genVal = gen[id] * genUnit;
+    const {x, y} = pt(genVal, sibPos[id] || 0);
+    return {id, x, y, person: personById(id)};
+  });
+
+  const nodeById = {};
+  nodes.forEach(n=>nodeById[n.id]=n);
+
+  function genOf(n){ return orientation === 'vertical' ? n.y : n.x; }
+  function sibOf(n){ return orientation === 'vertical' ? n.x : n.y; }
+
+  const links = [];
+
+  // Puolisoviivat
+  const seenUnion = new Set();
+  ids.forEach(id=>{
+    spousesOf(id).forEach(({union, person:sp})=>{
+      if(sp && nodeById[sp.id] && !seenUnion.has(union.id)){
+        seenUnion.add(union.id);
+        links.push({type:'spouse', from:id, to:sp.id, union});
+      }
+    });
+  });
+
+  // Vanhempi->lapsi -yhteydet perheittäin: runko lähtee puolisoviivan (tai yksinäisen
+  // vanhemman) keskeltä, haarautuu väliviivalle ja laskeutuu kuhunkin lapseen.
+  const families = {}; // key -> {parentIds:[...], childIds:[...]}
+  ids.forEach(id=>{
+    const p = personById(id);
+    const visibleParents = (p.parentIds||[]).filter(pid=>nodeById[pid]);
+    if(!visibleParents.length) return;
+    const key = [...visibleParents].sort().join('|');
+    if(!families[key]) families[key] = {parentIds:visibleParents, childIds:[]};
+    families[key].childIds.push(id);
+  });
+
+  // Kootaan perheet ensin talteen, ryhmiteltynä sukupolvisiirtymän mukaan (sama
+  // vanhempien alareuna -> lasten yläreuna -väli). Jos samassa siirtymässä on useita
+  // perheitä (esim. useita sisaruspareja vierekkäisissä sukupolvissa), niiden
+  // väliviivat (rungosta väylälle) saavat kukin oman "kaistansa" sukupolvien välisessä
+  // tyhjässä tilassa, jotta ne eivät piirry päällekkäin toistensa kanssa.
+  const familyEntries = Object.values(families).map(fam=>{
+    const parentNodes = fam.parentIds.map(pid=>nodeById[pid]).filter(Boolean);
+    const childNodes = fam.childIds.map(cid=>nodeById[cid]).filter(Boolean);
+    return {parentNodes, childNodes};
+  }).filter(f=>f.parentNodes.length && f.childNodes.length);
+
+  const transitions = {};
+  familyEntries.forEach(f=>{
+    let trunkGen, trunkSib;
+    if(f.parentNodes.length >= 2){
+      trunkGen = genOf(f.parentNodes[0]) + genSize/2;
+      trunkSib = f.parentNodes.reduce((sum,n)=>sum + sibOf(n) + sibSize/2, 0) / f.parentNodes.length;
+    } else {
+      trunkGen = genOf(f.parentNodes[0]) + genSize;
+      trunkSib = sibOf(f.parentNodes[0]) + sibSize/2;
+    }
+    f.trunkGen = trunkGen;
+    f.trunkSib = trunkSib;
+    f.parentFarEdge = genOf(f.parentNodes[0]) + genSize;
+    f.childNearGen = genOf(f.childNodes[0]);
+    const key = f.parentFarEdge + '|' + f.childNearGen;
+    (transitions[key] = transitions[key] || []).push(f);
+  });
+
+  Object.values(transitions).forEach(list=>{
+    // järjestetään perheet vanhempien sivusuuntaisen sijainnin mukaan, jotta kaistat
+    // menevät johdonmukaisessa (risteilemättömässä) järjestyksessä
+    list.sort((a,b)=>a.trunkSib-b.trunkSib);
+    const parentFarEdge = list[0].parentFarEdge;
+    const childNearGen = list[0].childNearGen;
+    const totalGap = childNearGen - parentFarEdge;
+    const laneGap = totalGap / (list.length + 1);
+
+    list.forEach((f, i)=>{
+      const busGen = list.length > 1 ? (parentFarEdge + laneGap*(i+1)) : (parentFarEdge + totalGap/2);
+      links.push({type:'trunk', p1: pt(f.trunkGen, f.trunkSib), p2: pt(busGen, f.trunkSib)});
+      f.childNodes.forEach(cn=>{
+        const childSib = sibOf(cn) + sibSize/2;
+        const childNear = genOf(cn);
+        links.push({type:'childdrop', p1: pt(busGen, f.trunkSib), p2: pt(busGen, childSib), p3: pt(childNear, childSib)});
+      });
+    });
+  });
+
+  return {nodes, links, orientation};
+}
+
+/* ---------------------------------------------------------------------
+   VIUHKANÄKYMÄ (viuhkakaavio) - puhdas esivanhempikaavio: juuri keskellä,
+   esivanhemmat puolikaaren kehinä ulospäin (isä vasemmalle, äiti oikealle).
+--------------------------------------------------------------------- */
+const FAN_CENTER_R = 80;   // juuren keskiympyrän säde
+const FAN_RING_W = 92;     // yhden sukupolvikehän leveys
+const FAN_GAP = 4;         // pieni rako kehien välissä
+
+function orderedParentIds(p){
+  const ids = (p.parentIds||[]).filter(pid=>personById(pid));
+  if(ids.length < 2) return ids.slice();
+  const persons = ids.map(personById);
+  const father = persons.find(x=>x && x.sukupuoli==='mies');
+  const mother = persons.find(x=>x && x.sukupuoli==='nainen');
+  if(father && mother && father.id!==mother.id) return [father.id, mother.id];
+  return ids.slice();
+}
+
+// Rakentaa esivanhempilistan: {id, gen, angleStart, angleEnd, person}. gen=0 (juuri)
+// ei ole mukana - se piirretään erikseen keskiympyränä. Puuttuvat esivanhemmat
+// jättävät vastaavan sektorin yksinkertaisesti tyhjäksi (ei kaadu, ei arvaa).
+function buildFanSlices(rootId, maxGen){
+  const slices = [];
+  function recurse(personId, gen, angleStart, angleEnd){
+    if(gen >= 1){
+      const person = personById(personId);
+      if(!person) return;
+      slices.push({id:personId, gen, angleStart, angleEnd, person});
+    }
+    if(gen >= maxGen) return;
+    const person = personById(personId);
+    if(!person) return;
+    const parentIds = orderedParentIds(person);
+    const mid = (angleStart+angleEnd)/2;
+    if(parentIds[0]) recurse(parentIds[0], gen+1, angleStart, mid);
+    if(parentIds[1]) recurse(parentIds[1], gen+1, mid, angleEnd);
+  }
+  recurse(rootId, 0, -90, 90);
+  return slices;
+}
+
+// Väri sektorin keskikulman mukaan - samalla esivanhempilinjalla pysyy
+// johdonmukaisesti samankaltainen sävy, ja koko viuhka muodostaa tasaisen
+// sateenkaarigradientin vasemmalta (isän puoli) oikealle (äidin puoli).
+const FAN_HUE_STOPS = [
+  {f:0, h:186}, {f:0.24, h:150}, {f:0.46, h:338}, {f:0.56, h:12}, {f:0.76, h:30}, {f:1, h:46}
+];
+function fanHueForFrac(frac){
+  for(let i=0;i<FAN_HUE_STOPS.length-1;i++){
+    const a = FAN_HUE_STOPS[i], b = FAN_HUE_STOPS[i+1];
+    if(frac >= a.f && frac <= b.f){
+      const t = (b.f===a.f) ? 0 : (frac-a.f)/(b.f-a.f);
+      return a.h + (b.h-a.h)*t;
+    }
+  }
+  return FAN_HUE_STOPS[FAN_HUE_STOPS.length-1].h;
+}
+function fanColor(angleStart, angleEnd, gen){
+  const mid = (angleStart+angleEnd)/2;
+  const frac = (mid + 90) / 180;
+  const hue = fanHueForFrac(frac);
+  const light = Math.min(72, 52 + gen*4);
+  return `hsl(${hue.toFixed(1)},58%,${light}%)`;
+}
+
+function fanPolar(cx, cy, r, angleDeg){
+  const a = angleDeg * Math.PI/180;
+  return { x: cx + r*Math.sin(a), y: cy - r*Math.cos(a) };
+}
+function fanArcPath(cx, cy, rInner, rOuter, angleStart, angleEnd){
+  const so = fanPolar(cx,cy,rOuter,angleStart), eo = fanPolar(cx,cy,rOuter,angleEnd);
+  const si = fanPolar(cx,cy,rInner,angleEnd), ei = fanPolar(cx,cy,rInner,angleStart);
+  const largeArc = (angleEnd-angleStart) > 180 ? 1 : 0;
+  return `M ${so.x} ${so.y} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${eo.x} ${eo.y} `+
+         `L ${si.x} ${si.y} A ${rInner} ${rInner} 0 ${largeArc} 0 ${ei.x} ${ei.y} Z`;
+}
+
+function layoutFan(rootId, generations){
+  const root = personById(rootId);
+  if(!root) return null;
+  const cx = 0, cy = 0;
+  const slices = buildFanSlices(rootId, generations);
+  const outerR = FAN_CENTER_R + generations*(FAN_RING_W) ;
+  return {root, slices, cx, cy, outerR};
+}
+
+function renderFanChart(fan){
+  const viewport = document.getElementById('viewport');
+  const {root, slices, cx, cy} = fan;
+  let svgHtml = '';
+
+  slices.forEach(s=>{
+    const rInner = FAN_CENTER_R + (s.gen-1)*FAN_RING_W + FAN_GAP;
+    const rOuter = FAN_CENTER_R + s.gen*FAN_RING_W - FAN_GAP;
+    const d = fanArcPath(cx, cy, rInner, rOuter, s.angleStart, s.angleEnd);
+    const fill = fanColor(s.angleStart, s.angleEnd, s.gen);
+    const angleSpan = s.angleEnd - s.angleStart;
+    const textR = (rInner+rOuter)/2;
+    const arcLen = textR * (angleSpan*Math.PI/180);
+    const fontSize = Math.max(7, Math.min(12.5, arcLen/9));
+    const guideId = 'fanpath-'+s.id;
+    const gStart = s.angleStart, gEnd = s.angleEnd;
+    const guideLargeArc = Math.abs(gEnd-gStart) > 180 ? 1 : 0;
+    const guideSweep = 1;
+
+    const maxChars = Math.max(3, Math.floor(arcLen / (fontSize*0.58)));
+
+    // Etunimi ja sukunimi omille riveilleen (sukunimi etunimen alle), jotta pitkäkin
+    // sukunimi mahtuu näkyviin kokonaan sen sijaan että se typistyisi yhdistettynä
+    // etunimeen. Rivit pinotaan säteen suunnassa niin, että lähempänä ulkoreunaa oleva
+    // rivi näyttää lohkon kaarevuuden vuoksi visuaalisesti "ylimmältä": vuosiluvut
+    // uloimmaksi, sitten etunimi, ja sukunimi lähimmäs keskustaa (eli näennäisesti
+    // etunimen "alle") - näin rivijärjestys vastaa toivottua "vuosiluvut / etunimi /
+    // sukunimi" -esitystapaa.
+    const sukunimi = displaySukunimi(s.person);
+    const showSurname = !!sukunimi && arcLen > 18;
+    const showYears = fontSize >= 8 && arcLen > 30;
+    const lines = [];
+    if(showSurname){
+      lines.push({text: truncate(sukunimi, maxChars), size: fontSize, weight:700, opacity:1});
+    }
+    lines.push({text: truncate(firstGivenName(s.person)||'(nimetön)', maxChars), size: fontSize, weight:700, opacity:1});
+    if(showYears){
+      const yearsLine = truncate(lifeSpan(s.person), maxChars);
+      if(yearsLine) lines.push({text: yearsLine, size: fontSize*0.82, weight:400, opacity:0.75});
+    }
+
+    svgHtml += `<path class="fan-slice" data-id="${s.id}" d="${d}" fill="${fill}"><title>${escapeHtml(fullName(s.person))}</title></path>`;
+
+    const lineH = fontSize + 2;
+    lines.forEach((line, i)=>{
+      const lineR = textR + (i - (lines.length-1)/2) * lineH;
+      const gp1L = fanPolar(cx,cy,lineR,gStart), gp2L = fanPolar(cx,cy,lineR,gEnd);
+      const guideIdL = guideId + '-l' + i;
+      const guideDL = `M ${gp1L.x} ${gp1L.y} A ${lineR} ${lineR} 0 ${guideLargeArc} ${guideSweep} ${gp2L.x} ${gp2L.y}`;
+      svgHtml += `<path id="${guideIdL}" d="${guideDL}" fill="none" stroke="none"></path>`;
+      svgHtml += `<text class="fan-slice-text" font-size="${line.size.toFixed(1)}" font-weight="${line.weight}" opacity="${line.opacity}">
+          <textPath href="#${guideIdL}" startOffset="50%" text-anchor="middle">${escapeHtml(line.text)}</textPath>
+        </text>`;
+    });
+  });
+
+  // Juuren keskiympyrä
+  const p = root;
+  svgHtml += `<g class="fan-center" data-id="${p.id}" transform="translate(${cx},${cy})">
+      <circle class="bg" r="${FAN_CENTER_R}"></circle>
+      ${p.valokuva ? `<clipPath id="fan-clip-${p.id}"><circle cy="-18" r="30"></circle></clipPath>
+        <image href="${p.valokuva}" x="-30" y="-48" width="60" height="60" clip-path="url(#fan-clip-${p.id})" preserveAspectRatio="xMidYMid slice"></image>`
+        : `<circle cy="-18" r="30" fill="var(--accent-dim)"></circle>
+           <text y="-13" font-size="20" fill="#fff">${escapeHtml(initials(p))}</text>`}
+      <text y="30" font-size="16">${escapeHtml(firstGivenName(p)||'(nimetön)')}</text>
+      <text y="50" font-size="16">${escapeHtml(displaySukunimi(p))}</text>
+      <text y="68" font-size="11" font-weight="400" fill="var(--text-dim)">${escapeHtml(lifeSpan(p))}</text>
+    </g>`;
+
+  viewport.innerHTML = svgHtml;
+  viewport.querySelectorAll('.fan-slice, .fan-center').forEach(el=>{
+    el.addEventListener('click', (e)=>{ openEditor(el.dataset.id); });
+  });
+}
+
+let lastLayoutNodes = [];
+let lastFanBounds = null;
+
+function renderTree(){
+  const svg = document.getElementById('treeSvg');
+  const viewport = document.getElementById('viewport');
+  const empty = document.getElementById('emptyState');
+
+  if(!state.persons.length){
+    empty.style.display = 'flex';
+    viewport.innerHTML = '';
+    lastLayoutNodes = [];
+    lastFanBounds = null;
+    return;
+  }
+  empty.style.display = 'none';
+
+  const effectiveUp = ui.showAncestors ? ui.genUp : 0;
+
+  if(ui.orientation === 'fan'){
+    lastLayoutNodes = [];
+    const fan = layoutFan(ui.rootId, Math.max(0, effectiveUp));
+    if(!fan){ lastFanBounds = null; viewport.innerHTML=''; return; }
+    renderFanChart(fan);
+    lastFanBounds = {minX:-fan.outerR, minY:-fan.outerR, maxX:fan.outerR, maxY:FAN_CENTER_R};
+    applyTransform();
+    return;
+  }
+  lastFanBounds = null;
+
+  const {nodes, links} = layoutTree(ui.rootId, effectiveUp, ui.genDown, ui.orientation, ui.hideSiblings, ui.hideOtherPartners);
+  lastLayoutNodes = nodes;
+  const nodeById = {};
+  nodes.forEach(n=>nodeById[n.id]=n);
+
+  let svgHtml = '';
+
+  links.forEach(l=>{
+    if(l.type === 'spouse'){
+      const a = nodeById[l.from], b = nodeById[l.to];
+      if(!a || !b) return;
+      const x1=a.x+NODE_W/2, y1=a.y+NODE_H/2, x2=b.x+NODE_W/2, y2=b.y+NODE_H/2;
+      svgHtml += `<line class="link-spouse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`;
+    } else if(l.type === 'trunk'){
+      svgHtml += `<path class="link-parent" d="M${l.p1.x},${l.p1.y} L${l.p2.x},${l.p2.y}"></path>`;
+    } else if(l.type === 'childdrop'){
+      svgHtml += `<path class="link-parent" d="M${l.p1.x},${l.p1.y} L${l.p2.x},${l.p2.y} L${l.p3.x},${l.p3.y}"></path>`;
+    }
+  });
+
+  const vertOrient = ui.orientation === 'vertical';
+  nodes.forEach(n=>{
+    const p = n.person;
+    const sel = p.id === ui.selectedPersonId ? 'selected' : '';
+    const hasParents = (p.parentIds||[]).length > 0;
+    const hasChildren = childrenOf(p.id).length > 0;
+    const upX = vertOrient ? NODE_W/2 : -16, upY = vertOrient ? -16 : NODE_H/2;
+    const downX = vertOrient ? NODE_W/2 : NODE_W+16, downY = vertOrient ? NODE_H+16 : NODE_H/2;
+    const upGlyph = vertOrient ? '▲' : '◀';
+    const downGlyph = vertOrient ? '▼' : '▶';
+    svgHtml += `
+      <g class="node ${sel}" data-id="${p.id}" transform="translate(${n.x},${n.y})">
+        <rect width="${NODE_W}" height="${NODE_H}" rx="9"></rect>
+        ${p.valokuva ? `<clipPath id="clip-${p.id}"><circle cx="24" cy="${NODE_H/2}" r="16"></circle></clipPath>
+          <image href="${p.valokuva}" x="8" y="${NODE_H/2-16}" width="32" height="32" clip-path="url(#clip-${p.id})" preserveAspectRatio="xMidYMid slice"></image>`
+          : `<circle cx="24" cy="${NODE_H/2}" r="16" fill="var(--accent-dim)"></circle>
+             <text x="24" y="${NODE_H/2+4}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${escapeHtml(initials(p))}</text>`}
+        <text class="firstname" x="48" y="${NODE_H/2-13}">${escapeHtml(truncate(firstGivenName(p)||'(nimetön)',16))}</text>
+        <text class="name" x="48" y="${NODE_H/2+2}">${escapeHtml(truncate(displaySukunimi(p),16))}</text>
+        <text class="years" x="48" y="${NODE_H/2+19}">${escapeHtml(lifeSpan(p))}</text>
+        ${p.yDna ? `<g class="haplo-badge"><circle cx="${NODE_W-10}" cy="10" r="7" fill="#3f7cc4"></circle><text x="${NODE_W-10}" y="13" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">Y</text><title>Y-DNA: ${escapeHtml(p.yDna)}</title></g>` : ''}
+        ${p.mtDna ? `<g class="haplo-badge"><circle cx="${NODE_W-10}" cy="${p.yDna?24:10}" r="7" fill="#9b5fc0"></circle><text x="${NODE_W-10}" y="${p.yDna?27:13}" text-anchor="middle" font-size="7" fill="#fff" font-weight="700">mt</text><title>mtDNA: ${escapeHtml(p.mtDna)}</title></g>` : ''}
+        ${hasParents ? `<g class="nav-arrow nav-up" data-id="${p.id}" transform="translate(${upX},${upY})"><circle r="9"></circle><text text-anchor="middle" dy="3">${upGlyph}</text><title>Siirry vanhempaan</title></g>` : ''}
+        ${hasChildren ? `<g class="nav-arrow nav-down" data-id="${p.id}" transform="translate(${downX},${downY})"><circle r="9"></circle><text text-anchor="middle" dy="3">${downGlyph}</text><title>Siirry lapseen</title></g>` : ''}
+      </g>`;
+  });
+
+  viewport.innerHTML = svgHtml;
+  viewport.querySelectorAll('.node').forEach(g=>{
+    g.addEventListener('click', (e)=>{ openEditor(g.dataset.id); });
+  });
+  viewport.querySelectorAll('.nav-up').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); navigateToParent(el.dataset.id); });
+  });
+  viewport.querySelectorAll('.nav-down').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); navigateToChild(el.dataset.id); });
+  });
+
+  applyTransform();
+}
+
+function truncate(s,n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+function applyTransform(){
+  document.getElementById('viewport').setAttribute('transform',
+    `translate(${ui.panX},${ui.panY}) scale(${ui.zoom})`);
+}
+
+function fitToView(){
+  if(ui.orientation === 'fan'){
+    if(!lastFanBounds) return;
+  } else if(!lastLayoutNodes.length){
+    return;
+  }
+  const svg = document.getElementById('treeSvg');
+  const rect = svg.getBoundingClientRect();
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  if(ui.orientation === 'fan'){
+    ({minX,minY,maxX,maxY} = lastFanBounds);
+  } else {
+    lastLayoutNodes.forEach(n=>{
+      minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+      maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+NODE_H);
+    });
+  }
+  let treeW = Math.max(1, maxX-minX), treeH = Math.max(1, maxY-minY);
+  let centerX = (minX+maxX)/2, centerY = (minY+maxY)/2;
+
+  // Keskitetään näkymä aina LÄHTÖHENKILÖN (juuren) omaan sijaintiin sisarus-/sivuttais-
+  // akselilla sen sijaan, että koko puun bounding boxin painopiste määräisi keskityksen -
+  // muuten näkymä "ajautuu" sivuun heti kun toinen sukuhaara on huomattavasti toista
+  // leveämpi/syvempi (esim. toisen puolison esivanhempia ei tunneta). Lasketaan juuren
+  // ympärille symmetrinen, peilattu kehys skaalausta varten, jotta mikään puun osa ei
+  // silti jää näkymän ulkopuolelle.
+  if(ui.orientation === 'vertical' || ui.orientation === 'horizontal'){
+    const rootNode = lastLayoutNodes.find(n=>n.id === ui.rootId);
+    if(rootNode){
+      if(ui.orientation === 'vertical'){
+        const rootCx = rootNode.x + NODE_W/2;
+        const halfW = Math.max(rootCx - minX, maxX - rootCx, NODE_W/2);
+        centerX = rootCx; treeW = Math.max(treeW, halfW*2);
+      } else {
+        const rootCy = rootNode.y + NODE_H/2;
+        const halfH = Math.max(rootCy - minY, maxY - rootCy, NODE_H/2);
+        centerY = rootCy; treeH = Math.max(treeH, halfH*2);
+      }
+    }
+  }
+
+  const pad = 60;
+  const availW = Math.max(100, rect.width - pad*2);
+  const availH = Math.max(100, rect.height - pad*2);
+  let scale = Math.min(availW/treeW, availH/treeH, 1.3);
+  if(!isFinite(scale) || scale<=0) scale = 1;
+  scale = Math.max(0.12, scale);
+  ui.zoom = scale;
+  ui.panX = rect.width/2 - centerX*scale;
+  ui.panY = rect.height/2 - centerY*scale;
+  applyTransform();
+}
+
+/* ---------------------------------------------------------------------
+   TULOSTUS
+--------------------------------------------------------------------- */
+function printTree(){
+  const hasContent = ui.orientation === 'fan' ? !!lastFanBounds : lastLayoutNodes.length>0;
+  if(!hasContent){ alert('Ei tulostettavaa sukupuuta - valitse ensin lähtöhenkilö.'); return; }
+
+  const svg = document.getElementById('treeSvg');
+  const viewport = document.getElementById('viewport');
+  let minX,minY,maxX,maxY;
+  if(ui.orientation === 'fan'){
+    ({minX,minY,maxX,maxY} = lastFanBounds);
+  } else {
+    minX=Infinity; minY=Infinity; maxX=-Infinity; maxY=-Infinity;
+    lastLayoutNodes.forEach(n=>{
+      minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+      maxX=Math.max(maxX,n.x+NODE_W); maxY=Math.max(maxY,n.y+NODE_H);
+    });
+  }
+  const pad = 40;
+  const vbX = minX-pad, vbY = minY-pad;
+  const vbW = Math.max(1,(maxX-minX)+pad*2), vbH = Math.max(1,(maxY-minY)+pad*2);
+
+  const prevViewBox = svg.getAttribute('viewBox');
+  const prevTransform = viewport.getAttribute('transform');
+  let restored = false;
+  function restore(){
+    if(restored) return;
+    restored = true;
+    if(prevViewBox) svg.setAttribute('viewBox', prevViewBox); else svg.removeAttribute('viewBox');
+    viewport.setAttribute('transform', prevTransform || '');
+    document.body.classList.remove('printing');
+    window.removeEventListener('afterprint', restore);
+  }
+
+  // Tulostusta varten näytetään koko puu ilman panoroinnin/zoomauksen vaikutusta,
+  // ja piilotetaan käyttöliittymän kehykset sekä nav-arrow-nuolet CSS:llä (body.printing).
+  svg.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+  viewport.setAttribute('transform', 'translate(0,0) scale(1)');
+  document.body.classList.add('printing');
+  window.addEventListener('afterprint', restore);
+  setTimeout(()=>{ window.print(); }, 50);
+  setTimeout(restore, 4000); // varmuuden vuoksi, jos afterprint ei laukea kaikissa selaimissa
+}
+
+/* pan & zoom */
+(function setupPanZoom(){
+  const svg = document.getElementById('treeSvg');
+  let dragging=false, lastX=0, lastY=0;
+  svg.addEventListener('mousedown', (e)=>{
+    if(e.target.closest('.node')) return;
+    dragging=true; lastX=e.clientX; lastY=e.clientY; svg.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', (e)=>{
+    if(!dragging) return;
+    ui.panX += (e.clientX-lastX); ui.panY += (e.clientY-lastY);
+    lastX=e.clientX; lastY=e.clientY;
+    applyTransform();
+  });
+  window.addEventListener('mouseup', ()=>{ dragging=false; svg.classList.remove('dragging'); });
+  svg.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.08 : 0.93;
+    ui.zoom = Math.min(3, Math.max(0.2, ui.zoom*delta));
+    applyTransform();
+  }, {passive:false});
+
+  document.getElementById('btnZoomIn').addEventListener('click',()=>{ ui.zoom=Math.min(3,ui.zoom*1.15); applyTransform(); });
+  document.getElementById('btnZoomOut').addEventListener('click',()=>{ ui.zoom=Math.max(0.2,ui.zoom*0.87); applyTransform(); });
+  document.getElementById('btnZoomReset').addEventListener('click', fitToView);
+})();
+
+/* ---------------------------------------------------------------------
+   SUKUPUUN OTSIKKO JA KOKO NÄYTÖN TILA
+--------------------------------------------------------------------- */
+document.getElementById('treeNameInput').addEventListener('input', (e)=>{
+  state.treeName = e.target.value;
+  renderTreeName();
+  autoBackup();
+});
+
+function setFullscreenUiActive(active){
+  document.body.classList.toggle('fs-active', active);
+  const btn = document.getElementById('btnFullscreen');
+  btn.textContent = active ? '⤢' : '⛶';
+  btn.title = active ? 'Poistu koko näytöltä' : 'Koko näyttö';
+  // ikkunan/koon muutos vaatii puun uudelleensovituksen näkymään
+  setTimeout(fitToView, 60);
+}
+
+document.getElementById('btnFullscreen').addEventListener('click', async ()=>{
+  if(!document.fullscreenElement){
+    try{ await document.documentElement.requestFullscreen(); }
+    catch(e){ /* selain ei tue tai esti Fullscreen APIn - jatketaan silti sovelluksen omalla koko näytön tilalla */ }
+    setFullscreenUiActive(true);
+  } else {
+    try{ await document.exitFullscreen(); }catch(e){/* ohitetaan */}
+    setFullscreenUiActive(false);
+  }
+});
+document.getElementById('btnExitFullscreen').addEventListener('click', async ()=>{
+  if(document.fullscreenElement){
+    try{ await document.exitFullscreen(); }catch(e){/* ohitetaan */}
+  }
+  setFullscreenUiActive(false);
+});
+document.addEventListener('fullscreenchange', ()=>{
+  if(!document.fullscreenElement){
+    setFullscreenUiActive(false);
+  }
+});
+
+/* ---------------------------------------------------------------------
+   HENKILÖN MUOKKAUS (editorPanel)
+--------------------------------------------------------------------- */
+function blankPerson(){
+  return {
+    id: genId(), etunimi:'', sukunimi:'', sukunimiKuollessa:'', patronyymi:'', nimiValinta:'synt', sukupuoli:'', ammatti:'',
+    syntAika:'', syntPaikka:'', kuolAika:'', kuolPaikka:'', hautaAika:'', hautaPaikka:'',
+    kuvaus:'', valokuva:'', yDna:'', mtDna:'', customFields:[], sourceLinks:[], parentIds:[],
+    piilotaPuolisotJaLapset:false, piilotaProfiili:false
+  };
+}
+
+function openEditor(personId){
+  ui.selectedPersonId = personId;
+  ui.editingPersonId = personId;
+  ui.draft = JSON.parse(JSON.stringify(personById(personId)));
+  document.getElementById('editorPanel').classList.add('open');
+  document.getElementById('editorTitle').textContent = fullName(ui.draft);
+  fillEditorFields();
+  switchTab('perus');
+  renderPersonList();
+  renderTree();
+}
+
+function openEditorForNew(){
+  const p = blankPerson();
+  state.persons.push(p);
+  invalidateIndexes(); // openEditor(p.id) alla lukee personById(p.id) heti, ennen autoBackup():ia
+  ui.rootId = ui.rootId || p.id;
+  openEditor(p.id);
+  renderRootSelect();
+  fitToView();
+}
+
+function closeEditor(){
+  ui.editingPersonId = null;
+  ui.draft = null;
+  document.getElementById('editorPanel').classList.remove('open');
+}
+
+function fillEditorFields(){
+  const d = ui.draft;
+  document.getElementById('f-etunimi').value = d.etunimi||'';
+  document.getElementById('f-sukunimi').value = d.sukunimi||'';
+  document.getElementById('f-sukunimi-kuollessa').value = d.sukunimiKuollessa||'';
+  document.getElementById('f-patronyymi').value = d.patronyymi||'';
+  document.getElementById('f-nimivalinta').value = d.nimiValinta||'synt';
+  document.getElementById('f-hautaaika').value = d.hautaAika||'';
+  document.getElementById('f-hautapaikka').value = d.hautaPaikka||'';
+  document.getElementById('f-sukupuoli').value = d.sukupuoli||'';
+  document.getElementById('f-ammatti').value = d.ammatti||'';
+  document.getElementById('f-syntaika').value = d.syntAika||'';
+  document.getElementById('f-syntpaikka').value = d.syntPaikka||'';
+  document.getElementById('f-kuolaika').value = d.kuolAika||'';
+  document.getElementById('f-kuolpaikka').value = d.kuolPaikka||'';
+  document.getElementById('f-kuvaus').value = d.kuvaus||'';
+  document.getElementById('f-ydna').value = d.yDna||'';
+  document.getElementById('f-mtdna').value = d.mtDna||'';
+  document.getElementById('f-piilota-puolisot-lapset').checked = !!d.piilotaPuolisotJaLapset;
+  document.getElementById('f-piilota-profiili').checked = !!d.piilotaProfiili;
+  const photoPrev = document.getElementById('photoPreview');
+  if(d.valokuva){ photoPrev.src = d.valokuva; photoPrev.style.display='block'; }
+  else { photoPrev.style.display='none'; }
+  renderCustomFields();
+  renderEventsTab();
+  renderSourcesTab();
+  renderRelationsTab();
+}
+
+function readEditorFieldsIntoDraft(){
+  const d = ui.draft;
+  d.etunimi = document.getElementById('f-etunimi').value.trim();
+  d.sukunimi = document.getElementById('f-sukunimi').value.trim();
+  d.sukunimiKuollessa = document.getElementById('f-sukunimi-kuollessa').value.trim();
+  d.patronyymi = document.getElementById('f-patronyymi').value.trim();
+  d.nimiValinta = document.getElementById('f-nimivalinta').value;
+  d.hautaAika = document.getElementById('f-hautaaika').value.trim();
+  d.hautaPaikka = document.getElementById('f-hautapaikka').value.trim();
+  d.sukupuoli = document.getElementById('f-sukupuoli').value;
+  d.ammatti = document.getElementById('f-ammatti').value.trim();
+  d.syntAika = document.getElementById('f-syntaika').value.trim();
+  d.syntPaikka = document.getElementById('f-syntpaikka').value.trim();
+  d.kuolAika = document.getElementById('f-kuolaika').value.trim();
+  d.kuolPaikka = document.getElementById('f-kuolpaikka').value.trim();
+  d.kuvaus = document.getElementById('f-kuvaus').value;
+  d.yDna = document.getElementById('f-ydna').value.trim();
+  d.mtDna = document.getElementById('f-mtdna').value.trim();
+  d.piilotaPuolisotJaLapset = document.getElementById('f-piilota-puolisot-lapset').checked;
+  d.piilotaProfiili = document.getElementById('f-piilota-profiili').checked;
+}
+
+function saveDraftToState(){
+  readEditorFieldsIntoDraft();
+  const idx = state.persons.findIndex(p=>p.id===ui.draft.id);
+  if(idx>=0) state.persons[idx] = JSON.parse(JSON.stringify(ui.draft));
+  autoBackup();
+  refreshAll();
+  document.getElementById('editorTitle').textContent = fullName(ui.draft);
+}
+
+function switchTab(tab){
+  ui.activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active', c.id==='tab-'+tab));
+}
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+
+/* --- Muut tiedot (custom fields) --- */
+function renderCustomFields(){
+  const wrap = document.getElementById('customFieldsList');
+  const fields = ui.draft.customFields||[];
+  wrap.innerHTML = fields.map((f,i)=>`
+    <div class="field-row" data-idx="${i}">
+      <input class="cf-key" placeholder="Kentän nimi" value="${escapeHtml(f.avain)}">
+      <input class="cf-val" placeholder="Arvo" value="${escapeHtml(f.arvo)}">
+      <button class="small-btn danger cf-del">✕</button>
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.field-row').forEach(row=>{
+    const i = +row.dataset.idx;
+    row.querySelector('.cf-key').addEventListener('input', e=>{ fields[i].avain = e.target.value; });
+    row.querySelector('.cf-val').addEventListener('input', e=>{ fields[i].arvo = e.target.value; });
+    row.querySelector('.cf-del').addEventListener('click', ()=>{ fields.splice(i,1); renderCustomFields(); });
+  });
+}
+document.getElementById('btnAddCustomField').addEventListener('click', ()=>{
+  (ui.draft.customFields = ui.draft.customFields||[]).push({avain:'', arvo:''});
+  renderCustomFields();
+});
+
+/* --- Valokuva --- */
+document.getElementById('f-photo').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    ui.draft.valokuva = reader.result;
+    const prev = document.getElementById('photoPreview');
+    prev.src = reader.result; prev.style.display='block';
+  };
+  reader.readAsDataURL(file);
+});
+document.getElementById('btnRemovePhoto').addEventListener('click', ()=>{
+  ui.draft.valokuva='';
+  document.getElementById('photoPreview').style.display='none';
+  document.getElementById('f-photo').value='';
+});
+
+/* --- Kuvaus / muistiinpanot -kentän suurennettu muokkausikkuna --- */
+document.getElementById('btnExpandKuvaus').addEventListener('click', ()=>{
+  const src = document.getElementById('f-kuvaus');
+  document.getElementById('textExpandArea').value = src.value;
+  document.getElementById('textExpandOverlay').classList.add('open');
+  document.getElementById('textExpandArea').focus();
+});
+document.getElementById('textExpandArea').addEventListener('input', (e)=>{
+  document.getElementById('f-kuvaus').value = e.target.value;
+});
+document.getElementById('btnShrinkKuvaus').addEventListener('click', ()=>{
+  document.getElementById('textExpandOverlay').classList.remove('open');
+});
+
+/* --- Wikipedia-linkki syntymäpaikkakunnalle --- */
+document.getElementById('btnWikiSyntpaikka').addEventListener('click', ()=>{
+  const paikka = document.getElementById('f-syntpaikka').value.trim();
+  if(!paikka){ alert('Kirjoita ensin syntymäpaikka.'); return; }
+  const wikiTitle = paikka.trim().replace(/\s+/g, '_');
+  const url = 'https://fi.wikipedia.org/wiki/' + encodeURIComponent(wikiTitle);
+  window.open(url, '_blank', 'noopener');
+});
+
+/* --- Google-kartta syntymäpaikkakunnalle --- */
+document.getElementById('btnMapSyntpaikka').addEventListener('click', ()=>{
+  const paikka = document.getElementById('f-syntpaikka').value.trim();
+  if(!paikka){ alert('Kirjoita ensin syntymäpaikka.'); return; }
+  const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(paikka);
+  window.open(url, '_blank', 'noopener');
+});
+
+/* --- Aikajana (tapahtumat) --- */
+// pvm-kentän muoto voi olla "pvm.kk.vvvv", "kk.vvvv" tai pelkkä vuosiluku - siksi
+// tapahtumia ei voi lajitella tekstinä (esim. "9.1850" < "1.1900" aakkosjärjestyksessä
+// väärin) vaan päivämäärästä lasketaan vertailtava avain vuosi/kk/pv-järjestyksessä.
+function eventDateKey(pvm){
+  if(!pvm) return Infinity;
+  const s = String(pvm).trim();
+  let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(m) return (+m[3])*10000 + (+m[2])*100 + (+m[1]);
+  m = s.match(/^(\d{1,2})\.(\d{4})$/);
+  if(m) return (+m[2])*10000 + (+m[1])*100;
+  m = s.match(/(\d{4})/);
+  if(m) return (+m[1])*10000;
+  return Infinity;
+}
+function eventsFor(personId){
+  return state.events.filter(ev=>ev.personId===personId)
+    .sort((a,b)=> eventDateKey(a.pvm) - eventDateKey(b.pvm));
+}
+function renderEventsTab(){
+  const wrap = document.getElementById('eventsList');
+  const evs = eventsFor(ui.draft.id);
+  if(!evs.length){ wrap.innerHTML = `<div class="muted">Ei tapahtumia vielä.</div>`; return; }
+  wrap.innerHTML = evs.map(ev=>`
+    <div class="list-item" data-id="${ev.id}">
+      <div class="li-head">
+        <div>
+          <div class="li-title">${escapeHtml(ev.otsake||'(nimetön tapahtuma)')}${ev.autoKey ? ' <span class="muted" style="font-weight:400;">(automaattinen)</span>' : ''}</div>
+          <div class="li-sub">${escapeHtml(ev.pvm||'')}</div>
+        </div>
+        <div>
+          <button class="small-btn ev-edit">Muokkaa</button>
+          <button class="small-btn danger ev-del">Poista</button>
+        </div>
+      </div>
+      ${ev.kuvaus ? `<div class="muted">${escapeHtml(ev.kuvaus)}</div>`:''}
+      ${ev.autoKey ? `<div class="muted" style="font-style:italic;">Päivittyy automaattisesti profiilitietojen mukaan.</div>` : ''}
+      ${(ev.sourceLinks||[]).length ? `<div style="margin-top:4px;">${ev.sourceLinks.map(s=>`<a class="link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.otsikko||s.url)}</a>`).join('<br>')}</div>`:''}
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.list-item').forEach(item=>{
+    const id = item.dataset.id;
+    item.querySelector('.ev-edit').addEventListener('click', ()=>editEvent(id));
+    item.querySelector('.ev-del').addEventListener('click', ()=>{
+      state.events = state.events.filter(e=>e.id!==id);
+      autoBackup(); renderEventsTab();
+    });
+  });
+}
+function editEvent(eventId){
+  const ev = eventId ? state.events.find(e=>e.id===eventId) : {id:genId(), personId:ui.draft.id, pvm:'', otsake:'', kuvaus:'', sourceLinks:[]};
+  const isNew = !eventId;
+  showModal(isNew?'Uusi tapahtuma':'Muokkaa tapahtumaa', `
+    <label>Otsikko</label><input id="m-ev-otsake" value="${escapeHtml(ev.otsake)}">
+    <label>Päivämäärä</label><input id="m-ev-pvm" placeholder="pvm.kk.vvvv" value="${escapeHtml(ev.pvm)}">
+    <label>Kuvaus</label><textarea id="m-ev-kuvaus" rows="3">${escapeHtml(ev.kuvaus)}</textarea>
+  `, ()=>{
+    ev.otsake = document.getElementById('m-ev-otsake').value.trim();
+    ev.pvm = document.getElementById('m-ev-pvm').value.trim();
+    ev.kuvaus = document.getElementById('m-ev-kuvaus').value;
+    if(isNew) state.events.push(ev);
+    autoBackup();
+    renderEventsTab();
+  });
+}
+document.getElementById('btnAddEvent').addEventListener('click', ()=>editEvent(null));
+
+/* --- Lähdelinkit (henkilö) --- */
+function renderSourcesTab(){
+  const wrap = document.getElementById('sourceList');
+  const srcs = ui.draft.sourceLinks||[];
+  if(!srcs.length){ wrap.innerHTML = `<div class="muted">Ei lähdelinkkejä vielä.</div>`; return; }
+  wrap.innerHTML = srcs.map((s,i)=>`
+    <div class="list-item" data-idx="${i}">
+      <div class="li-head">
+        <div class="li-title">${escapeHtml(s.otsikko||s.url)}</div>
+        <button class="small-btn danger src-del">Poista</button>
+      </div>
+      <a class="link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>
+      ${s.huom?`<div class="muted" style="margin-top:3px;">${escapeHtml(s.huom)}</div>`:''}
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.list-item').forEach(item=>{
+    const i = +item.dataset.idx;
+    item.querySelector('.src-del').addEventListener('click', ()=>{
+      srcs.splice(i,1); saveDraftListChange(); renderSourcesTab();
+    });
+  });
+}
+function saveDraftListChange(){
+  const idx = state.persons.findIndex(p=>p.id===ui.draft.id);
+  if(idx>=0) state.persons[idx] = JSON.parse(JSON.stringify(ui.draft));
+  autoBackup();
+}
+document.getElementById('btnAddSource').addEventListener('click', ()=>{
+  showModal('Lisää lähdelinkki', `
+    <label>Otsikko</label><input id="m-src-title" placeholder="esim. Väestörekisteri">
+    <label>URL</label><input id="m-src-url" placeholder="https://...">
+    <label>Huomio</label><input id="m-src-note" placeholder="valinnainen">
+  `, ()=>{
+    const url = document.getElementById('m-src-url').value.trim();
+    if(!url) return false;
+    (ui.draft.sourceLinks = ui.draft.sourceLinks||[]).push({
+      otsikko: document.getElementById('m-src-title').value.trim(),
+      url, huom: document.getElementById('m-src-note').value.trim()
+    });
+    saveDraftListChange();
+    renderSourcesTab();
+  });
+});
+
+/* --- Suhteet: vanhemmat / puolisot / lapset --- */
+function personPickerOptions(excludeIds){
+  return state.persons.filter(p=>!excludeIds.includes(p.id))
+    .sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'))
+    .map(p=>`<option value="${p.id}">${escapeHtml(fullName(p))}</option>`).join('');
+}
+
+function renderRelationsTab(){
+  const d = ui.draft;
+  const livePerson = personById(d.id) || d;
+
+  // Vanhemmat
+  const parentsWrap = document.getElementById('parentsList');
+  const parents = (livePerson.parentIds||[]).map(personById).filter(Boolean);
+  parentsWrap.innerHTML = parents.length ? parents.map(pp=>`
+    <div class="rel-block" data-id="${pp.id}">
+      <div class="li-head">
+        <div class="li-title">${escapeHtml(fullName(pp))}</div>
+        <div>
+          <button class="small-btn rel-goto">Avaa</button>
+          <button class="small-btn danger rel-remove">Poista suhde</button>
+        </div>
+      </div>
+    </div>`).join('') : `<div class="muted">Ei tiedossa olevia vanhempia.</div>`;
+  parentsWrap.querySelectorAll('.rel-block').forEach(el=>{
+    el.querySelector('.rel-goto').addEventListener('click', ()=>openEditor(el.dataset.id));
+    el.querySelector('.rel-remove').addEventListener('click', ()=>{
+      const person = personById(d.id);
+      person.parentIds = (person.parentIds||[]).filter(id=>id!==el.dataset.id);
+      if(ui.draft.id===d.id) ui.draft.parentIds = person.parentIds;
+      autoBackup(); refreshAll(); renderRelationsTab();
+    });
+  });
+  document.getElementById('btnAddParent').disabled = parents.length>=2;
+
+  // Puolisot
+  const spousesWrap = document.getElementById('spousesList');
+  const sps = spousesOf(d.id);
+  spousesWrap.innerHTML = sps.length ? sps.map(({union,person})=>`
+    <div class="rel-block" data-uid="${union.id}" data-pid="${person.id}">
+      <div class="li-head">
+        <div class="li-title">${escapeHtml(fullName(person))}</div>
+        <div>
+          <button class="small-btn rel-goto">Avaa</button>
+          <button class="small-btn rel-edit">Muokkaa</button>
+          <button class="small-btn danger rel-remove">Poista suhde</button>
+        </div>
+      </div>
+      <div class="li-sub">${escapeHtml(union.tyyppi||'puoliso')}${union.alkoi?(' · alkoi '+escapeHtml(union.alkoi)):''}${union.paikka?(' · '+escapeHtml(union.paikka)):''}${union.paattyi?(' · päättyi '+escapeHtml(union.paattyi)):''}</div>
+    </div>`).join('') : `<div class="muted">Ei puolisoita/kumppaneita lisätty.</div>`;
+  spousesWrap.querySelectorAll('.rel-block').forEach(el=>{
+    el.querySelector('.rel-goto').addEventListener('click', ()=>openEditor(el.dataset.pid));
+    el.querySelector('.rel-edit').addEventListener('click', ()=>editUnion(el.dataset.uid));
+    el.querySelector('.rel-remove').addEventListener('click', ()=>{
+      state.unions = state.unions.filter(u=>u.id!==el.dataset.uid);
+      autoBackup(); refreshAll(); renderRelationsTab();
+    });
+  });
+
+  // Lapset
+  const childrenWrap = document.getElementById('childrenList');
+  const kids = childrenOf(d.id);
+  childrenWrap.innerHTML = kids.length ? kids.map(c=>`
+    <div class="rel-block" data-id="${c.id}">
+      <div class="li-head">
+        <div class="li-title">${escapeHtml(fullName(c))}</div>
+        <div>
+          <button class="small-btn rel-goto">Avaa</button>
+          <button class="small-btn danger rel-remove">Poista suhde</button>
+        </div>
+      </div>
+    </div>`).join('') : `<div class="muted">Ei lapsia lisätty.</div>`;
+  childrenWrap.querySelectorAll('.rel-block').forEach(el=>{
+    el.querySelector('.rel-goto').addEventListener('click', ()=>openEditor(el.dataset.id));
+    el.querySelector('.rel-remove').addEventListener('click', ()=>{
+      const child = personById(el.dataset.id);
+      child.parentIds = (child.parentIds||[]).filter(id=>id!==d.id);
+      autoBackup(); refreshAll(); renderRelationsTab();
+    });
+  });
+}
+
+function editUnion(unionId){
+  const union = state.unions.find(u=>u.id===unionId);
+  if(!union) return;
+  showModal('Muokkaa puolisosuhdetta', `
+    <label>Suhteen tyyppi</label>
+    <select id="m-edit-sp-type">
+      <option value="avioliitto">Avioliitto</option>
+      <option value="avoliitto">Avoliitto</option>
+      <option value="kumppanuus">Kumppanuus</option>
+      <option value="muu">Muu</option>
+    </select>
+    <label>Alkoi (valinnainen)</label><input id="m-edit-sp-start" placeholder="pvm.kk.vvvv" value="${escapeHtml(union.alkoi)}">
+    <label>Paikka (valinnainen)</label><input id="m-edit-sp-paikka" placeholder="esim. Merikarvian kirkko" value="${escapeHtml(union.paikka||'')}">
+    <label>Päättyi (valinnainen)</label><input id="m-edit-sp-end" placeholder="pvm.kk.vvvv" value="${escapeHtml(union.paattyi)}">
+  `, ()=>{
+    union.tyyppi = document.getElementById('m-edit-sp-type').value;
+    union.alkoi = document.getElementById('m-edit-sp-start').value.trim();
+    union.paikka = document.getElementById('m-edit-sp-paikka').value.trim();
+    union.paattyi = document.getElementById('m-edit-sp-end').value.trim();
+    autoBackup(); refreshAll(); renderRelationsTab();
+  });
+  document.getElementById('m-edit-sp-type').value = union.tyyppi || 'avioliitto';
+}
+
+document.getElementById('btnAddParent').addEventListener('click', ()=>{
+  const d = ui.draft;
+  const person = personById(d.id);
+  const existingIds = [d.id, ...(person.parentIds||[])];
+  showModal('Lisää vanhempi', `
+    <label>Valitse olemassa oleva henkilö</label>
+    <select id="m-parent-existing"><option value="">— valitse —</option>${personPickerOptions(existingIds)}</select>
+    <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
+    <label>Uuden vanhemman nimi</label><input id="m-parent-new" placeholder="Etunimi Sukunimi">
+  `, ()=>{
+    const existingSel = document.getElementById('m-parent-existing').value;
+    const newName = document.getElementById('m-parent-new').value.trim();
+    let parentId = existingSel;
+    if(!parentId && newName){
+      const np = blankPerson();
+      const parts = newName.split(' ');
+      np.etunimi = parts.shift()||'';
+      np.sukunimi = parts.join(' ');
+      state.persons.push(np);
+      parentId = np.id;
+    }
+    if(!parentId) return false;
+    person.parentIds = person.parentIds||[];
+    if(person.parentIds.length>=2 || person.parentIds.includes(parentId)) return false;
+    person.parentIds.push(parentId);
+    if(ui.draft.id===d.id) ui.draft.parentIds = person.parentIds;
+    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+  });
+});
+
+document.getElementById('btnAddChild').addEventListener('click', ()=>{
+  const d = ui.draft;
+  const existingSpouses = spousesOf(d.id);
+  const onlyOneSpouse = existingSpouses.length === 1;
+  const spouseOptions = existingSpouses.map(({union,person})=>
+    `<option value="${person.id}" ${onlyOneSpouse?'selected':''}>${escapeHtml(fullName(person))} (${escapeHtml(union.tyyppi||'puoliso')})</option>`
+  ).join('');
+  showModal('Lisää lapsi', `
+    <label>Valitse olemassa oleva lapsi</label>
+    <select id="m-child-existing"><option value="">— valitse —</option>${personPickerOptions([d.id])}</select>
+    <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
+    <label>Uuden lapsen nimi</label><input id="m-child-new" placeholder="Etunimi Sukunimi">
+
+    <label style="margin-top:12px;">Toinen vanhempi</label>
+    <select id="m-child-secondparent">
+      <option value="" ${onlyOneSpouse?'':'selected'}>— Ei toista vanhempaa —</option>
+      ${spouseOptions}
+    </select>
+    <div class="muted" style="margin:6px 0;">tai uusi toinen vanhempi <span class="muted">(merkitään oletuksena avioliitossa olevaksi puolisoksi — tätä voi muuttaa jälkikäteen Suhteet-välilehdellä)</span>:</div>
+    <input id="m-child-secondparent-new" placeholder="Etunimi Sukunimi">
+  `, ()=>{
+    const existingSel = document.getElementById('m-child-existing').value;
+    const newName = document.getElementById('m-child-new').value.trim();
+    let child;
+    if(existingSel){ child = personById(existingSel); }
+    else if(newName){
+      child = blankPerson();
+      const parts = newName.split(' ');
+      child.etunimi = parts.shift()||'';
+      child.sukunimi = parts.join(' ');
+      state.persons.push(child);
+    }
+    if(!child) return false;
+    child.parentIds = child.parentIds||[];
+    if(child.parentIds.includes(d.id)) return false;
+    if(child.parentIds.length<2) child.parentIds.push(d.id);
+
+    const spSel = document.getElementById('m-child-secondparent').value;
+    const spNewName = document.getElementById('m-child-secondparent-new').value.trim();
+    let secondParentId = spSel;
+    if(!secondParentId && spNewName){
+      const np = blankPerson();
+      const parts = spNewName.split(' ');
+      np.etunimi = parts.shift()||'';
+      np.sukunimi = parts.join(' ');
+      state.persons.push(np);
+      secondParentId = np.id;
+      // uusi toinen vanhempi merkitään oletuksena avioliitossa olevaksi puolisoksi; tyyppiä voi muuttaa jälkikäteen
+      state.unions.push({ id: genId(), personIds:[d.id, secondParentId], tyyppi:'avioliitto', alkoi:'', paikka:'', paattyi:'', huomiot:'' });
+    }
+    if(secondParentId && child.parentIds.length<2 && !child.parentIds.includes(secondParentId)){
+      child.parentIds.push(secondParentId);
+    }
+
+    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+  });
+});
+
+document.getElementById('btnAddSpouse').addEventListener('click', ()=>{
+  const d = ui.draft;
+  showModal('Lisää puoliso / kumppani', `
+    <label>Valitse olemassa oleva henkilö</label>
+    <select id="m-sp-existing"><option value="">— valitse —</option>${personPickerOptions([d.id])}</select>
+    <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
+    <label>Uuden henkilön nimi</label><input id="m-sp-new" placeholder="Etunimi Sukunimi">
+    <label>Suhteen tyyppi</label>
+    <select id="m-sp-type">
+      <option value="avioliitto">Avioliitto</option>
+      <option value="avoliitto">Avoliitto</option>
+      <option value="kumppanuus">Kumppanuus</option>
+      <option value="muu">Muu</option>
+    </select>
+    <label>Alkoi (valinnainen)</label><input id="m-sp-start" placeholder="pvm.kk.vvvv">
+    <label>Paikka (valinnainen)</label><input id="m-sp-paikka" placeholder="esim. Merikarvian kirkko">
+    <label>Päättyi (valinnainen)</label><input id="m-sp-end" placeholder="pvm.kk.vvvv">
+  `, ()=>{
+    const existingSel = document.getElementById('m-sp-existing').value;
+    const newName = document.getElementById('m-sp-new').value.trim();
+    let spouseId = existingSel;
+    if(!spouseId && newName){
+      const np = blankPerson();
+      const parts = newName.split(' ');
+      np.etunimi = parts.shift()||'';
+      np.sukunimi = parts.join(' ');
+      state.persons.push(np);
+      spouseId = np.id;
+    }
+    if(!spouseId) return false;
+    state.unions.push({
+      id: genId(), personIds:[d.id, spouseId],
+      tyyppi: document.getElementById('m-sp-type').value,
+      alkoi: document.getElementById('m-sp-start').value.trim(),
+      paikka: document.getElementById('m-sp-paikka').value.trim(),
+      paattyi: document.getElementById('m-sp-end').value.trim(),
+      huomiot:''
+    });
+    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+  });
+});
+
+/* ---------------------------------------------------------------------
+   YLEISET NAPIT
+--------------------------------------------------------------------- */
+document.getElementById('btnSavePerson').addEventListener('click', saveDraftToState);
+document.getElementById('btnCloseEditor').addEventListener('click', ()=>{
+  saveDraftToState();
+  closeEditor();
+  renderPersonList(); renderTree();
+});
+document.getElementById('btnDeletePerson').addEventListener('click', ()=>{
+  if(!ui.draft) return;
+  showModal('Poista henkilö', `<div>Haluatko varmasti poistaa henkilön <strong>${escapeHtml(fullName(ui.draft))}</strong>? Tämä poistaa myös hänen tapahtumansa ja suhteensa.</div>`, ()=>{
+    const id = ui.draft.id;
+    state.persons = state.persons.filter(p=>p.id!==id);
+    state.persons.forEach(p=>{ p.parentIds = (p.parentIds||[]).filter(pid=>pid!==id); });
+    state.unions = state.unions.filter(u=>!u.personIds.includes(id));
+    state.events = state.events.filter(e=>e.personId!==id);
+    if(ui.rootId===id) ui.rootId = state.persons[0] ? state.persons[0].id : null;
+    if(ui.selectedPersonId===id) ui.selectedPersonId=null;
+    closeEditor();
+    autoBackup();
+    refreshAll();
+  });
+});
+document.getElementById('btnCenterOnPerson').addEventListener('click', ()=>{
+  if(!ui.draft) return;
+  ui.rootId = ui.draft.id;
+  renderRootSelect();
+  renderTree();
+  fitToView();
+});
+
+document.getElementById('btnNewPerson').addEventListener('click', openEditorForNew);
+document.getElementById('btnEmptyAdd').addEventListener('click', openEditorForNew);
+
+document.getElementById('searchBox').addEventListener('input', renderPersonList);
+
+document.getElementById('rootSelect').addEventListener('change', (e)=>{ ui.rootId = e.target.value; renderTree(); fitToView(); });
+document.getElementById('orientSelect').addEventListener('change', (e)=>{ ui.orientation = e.target.value; renderTree(); fitToView(); });
+document.getElementById('genUp').addEventListener('input', (e)=>{ ui.genUp = Math.max(0, +e.target.value||0); updatePerfSafeguard(); renderTree(); fitToView(); });
+document.getElementById('genDown').addEventListener('input', (e)=>{ ui.genDown = Math.max(0, +e.target.value||0); updatePerfSafeguard(); renderTree(); fitToView(); });
+document.getElementById('showAncestorsChk').addEventListener('change', (e)=>{
+  ui.showAncestors = e.target.checked;
+  document.getElementById('genUp').disabled = !ui.showAncestors;
+  updatePerfSafeguard();
+  renderTree(); fitToView();
+});
+document.getElementById('hideSiblingsChk').addEventListener('change', (e)=>{
+  ui.userHideSiblings = e.target.checked;
+  updatePerfSafeguard();
+  renderTree(); fitToView();
+});
+document.getElementById('hideOtherPartnersChk').addEventListener('change', (e)=>{
+  ui.userHideOtherPartners = e.target.checked;
+  updatePerfSafeguard();
+  renderTree(); fitToView();
+});
+
+/* Näkymäasetukset-paneeli on oletuksena piilotettu; avataan/suljetaan "A"-painikkeella */
+document.getElementById('treeControlsToggle').addEventListener('click', ()=>{
+  document.getElementById('treeControlsPanel').classList.add('open');
+  document.getElementById('treeControlsToggle').classList.add('hidden');
+});
+document.getElementById('treeControlsClose').addEventListener('click', ()=>{
+  document.getElementById('treeControlsPanel').classList.remove('open');
+  document.getElementById('treeControlsToggle').classList.remove('hidden');
+});
+
+document.getElementById('btnSaveFile').addEventListener('click', ()=>saveToFile(false));
+document.getElementById('btnSaveAs').addEventListener('click', ()=>saveToFile(true));
+document.getElementById('btnOpenFile').addEventListener('click', openFromFile);
+document.getElementById('btnClearTree').addEventListener('click', clearTree);
+document.getElementById('btnExportGedcom').addEventListener('click', exportGedcom);
+document.getElementById('btnImportGedcom').addEventListener('click', ()=>{
+  document.getElementById('gedcomImportInput').click();
+});
+document.getElementById('btnPrintTree').addEventListener('click', printTree);
+
+const hiddenGedcomInput = document.createElement('input');
+hiddenGedcomInput.type='file'; hiddenGedcomInput.accept='.ged,text/plain'; hiddenGedcomInput.id='gedcomImportInput';
+hiddenGedcomInput.style.display='none';
+document.body.appendChild(hiddenGedcomInput);
+hiddenGedcomInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const doImport = ()=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{ importGedcom(decodeGedcomBuffer(reader.result), file.name); };
+    reader.readAsArrayBuffer(file);
+  };
+  showModal(
+    'Tuo GEDCOM-tiedosto',
+    '<p>Tämä <strong>korvaa</strong> nykyisen sukupuun tiedoston <em>' + escapeHtml(file.name) + '</em> sisällöllä. Jos et ole tallentanut nykyistä sukupuuta, tiedot katoavat.</p>',
+    ()=>{ doImport(); }
+  );
+  hiddenGedcomInput.value='';
+});
+
+/* fallback-tuonti (selaimet ilman File System Access APIa) */
+const hiddenImportInput = document.createElement('input');
+hiddenImportInput.type='file'; hiddenImportInput.accept='application/json'; hiddenImportInput.id='fileImportInput';
+hiddenImportInput.style.display='none';
+document.body.appendChild(hiddenImportInput);
+hiddenImportInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ loadStateFromJson(reader.result); setFileStatus('Tuotu tiedostosta: '+file.name); };
+  reader.readAsText(file);
+  hiddenImportInput.value='';
+});
+
+window.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey||e.metaKey) && e.key==='s'){ e.preventDefault(); saveToFile(false); }
+});
+
+/* ---------------------------------------------------------------------
+   PÄIVITYS
+--------------------------------------------------------------------- */
+function refreshAll(){
+  renderPersonList();
+  renderRootSelect();
+  renderTree();
+  fitToView();
+}
+
+/* ---------------------------------------------------------------------
+   ALUSTUS
+--------------------------------------------------------------------- */
+function seedExampleIfEmpty(){
+  if(state.persons.length) return;
+  // Ei valmiita esimerkkihenkilöitä - käyttäjä aloittaa tyhjästä.
+}
+
+loadAutoBackupIfPresent();
+seedExampleIfEmpty();
+if(!ui.rootId || !personById(ui.rootId)){
+  // ei tallennettua oletusprofiilia (tai se ei enää löydy) - käytetään ensimmäistä henkilöä
+  if(state.persons.length) ui.rootId = state.persons[0].id;
+}
+syncUiControlsFromState();
+syncAllAutoEvents();
+ui.panX = 60; ui.panY = 60;
+refreshAll();
+
+})();
+</script>
+</body>
+</html>
