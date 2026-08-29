@@ -1044,6 +1044,38 @@ function exportGedcom(){
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
 }
 
+/* Tulkitsee .ged-tiedoston tavut oikealla merkistöllä. GEDCOM-tiedostoissa merkistö vaihtelee
+   ohjelmasta riippuen (moderni vienti on yleensä UTF-8, mutta vanhempi tai muun ohjelman
+   tuottama tiedosto ilmoittaa usein "1 CHAR ANSI" ja käyttää tosiasiassa Windows-1252/Latin-1
+   -tavutusta ä/ö/å-kirjaimille) - jos tiedosto luettaisiin aina pelkkänä UTF-8:na, nämä
+   kirjaimet näkyisivät vääristyneinä ("?"-merkkeinä). Otsikko-osan (HEAD/SOUR/GEDC/CHAR) rivit
+   ovat aina puhdasta ASCII:a, joten se voidaan lukea turvallisesti merkistöstä riippumatta
+   CHAR-rivin löytämiseksi, ja koko tiedosto tulkitaan sitten sen mukaisella merkistöllä. */
+function decodeGedcomBuffer(buffer){
+  const bytes = new Uint8Array(buffer);
+  if(bytes.length>=3 && bytes[0]===0xEF && bytes[1]===0xBB && bytes[2]===0xBF){
+    return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  }
+  if(bytes.length>=2 && bytes[0]===0xFF && bytes[1]===0xFE){
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  }
+  if(bytes.length>=2 && bytes[0]===0xFE && bytes[1]===0xFF){
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  }
+  const headChunk = new TextDecoder('windows-1252').decode(bytes.subarray(0, Math.min(bytes.length, 4000)));
+  const m = headChunk.match(/\n1\s+CHAR\s+([A-Za-z0-9_-]+)/i) || headChunk.match(/^1\s+CHAR\s+([A-Za-z0-9_-]+)/im);
+  const charset = m ? m[1].toUpperCase() : 'UTF-8';
+  let encoding;
+  if(charset==='UTF-8' || charset==='UTF8') encoding = 'utf-8';
+  else if(charset==='UNICODE') encoding = 'utf-16le';
+  else encoding = 'windows-1252'; // ANSI, ANSEL, ASCII, IBMPC ja muut vanhat merkistöt: paras lähestymä
+  try{
+    return new TextDecoder(encoding, {fatal:false}).decode(bytes);
+  }catch(e){
+    return new TextDecoder('utf-8', {fatal:false}).decode(bytes);
+  }
+}
+
 /* Jäsentää raa'an .ged-tiedoston sisällön GEDCOM-tietueiksi: [{level, tag, xref, value}] */
 function parseGedcomLines(text){
   const rawLines = text.split(/\r\n|\r|\n/);
@@ -2739,8 +2771,8 @@ hiddenGedcomInput.addEventListener('change', (e)=>{
   if(!file) return;
   const doImport = ()=>{
     const reader = new FileReader();
-    reader.onload = ()=>{ importGedcom(reader.result, file.name); };
-    reader.readAsText(file, 'UTF-8');
+    reader.onload = ()=>{ importGedcom(decodeGedcomBuffer(reader.result), file.name); };
+    reader.readAsArrayBuffer(file);
   };
   showModal(
     'Tuo GEDCOM-tiedosto',
