@@ -598,9 +598,64 @@ function lifeSpan(p){
   }
   return b || '';
 }
-function personById(id){ return state.persons.find(p=>p.id===id); }
-function childrenOf(id){ return state.persons.filter(p => (p.parentIds||[]).includes(id)); }
-function unionsOf(id){ return state.unions.filter(u => u.personIds.includes(id)); }
+/* ---------------------------------------------------------------------
+   HAKUINDEKSIT (suorituskyky isoilla sukupuilla)
+   personById/childrenOf/unionsOf ovat sukupuun piirrossa ja käsittelyssä
+   ylivoimaisesti eniten kutsuttuja funktioita - esim. yhden puunäkymän
+   piirto kutsuu niitä kertaluokkaa "näkyvien henkilöiden määrä" kertaa.
+   Suoraan state.persons/state.unions-taulukoita läpikäyvä .find()/.filter()
+   on O(henkilöiden määrä) JOKAISELLA kutsulla, jolloin koko piirto muuttuu
+   O(n²):ksi - kymmenien tuhansien henkilöiden sukupuulla (esim. GEDCOM-
+   tuonnilla tuotu) tämä näkyy sekuntien tai jopa minuuttien viiveenä.
+   Sen sijaan pidetään yllä id-avaimisia Map-indeksejä, jotka rakennetaan
+   laiskasti (vain kun jotain on oikeasti muuttunut, ks. invalidateIndexes)
+   - yksi O(n) uudelleenrakennus per oikea muutos, minkä jälkeen jokainen
+   haku on O(1)/O(k) (k = kyseisen henkilön lasten/liittojen määrä). */
+let personIndex = new Map();
+let childrenIndex = new Map();       // vanhemman id -> lapset (taulukko)
+let unionsByPersonIndex = new Map(); // henkilön id -> liitot (taulukko)
+let indexesDirty = true;
+
+function invalidateIndexes(){ indexesDirty = true; }
+
+function ensureIndexes(){
+  if(!indexesDirty) return;
+  personIndex = new Map();
+  childrenIndex = new Map();
+  unionsByPersonIndex = new Map();
+  state.persons.forEach(p=>{
+    personIndex.set(p.id, p);
+    (p.parentIds||[]).forEach(pid=>{
+      let arr = childrenIndex.get(pid);
+      if(!arr){ arr = []; childrenIndex.set(pid, arr); }
+      arr.push(p);
+    });
+  });
+  state.unions.forEach(u=>{
+    (u.personIds||[]).forEach(pid=>{
+      let arr = unionsByPersonIndex.get(pid);
+      if(!arr){ arr = []; unionsByPersonIndex.set(pid, arr); }
+      arr.push(u);
+    });
+  });
+  indexesDirty = false;
+}
+
+function personById(id){
+  if(!id) return undefined;
+  ensureIndexes();
+  return personIndex.get(id);
+}
+function childrenOf(id){
+  ensureIndexes();
+  const arr = childrenIndex.get(id);
+  return arr ? arr.slice() : []; // kopio, jotta esim. .sort() kutsujan päässä ei sotke indeksiä
+}
+function unionsOf(id){
+  ensureIndexes();
+  const arr = unionsByPersonIndex.get(id);
+  return arr ? arr.slice() : [];
+}
 function spousesOf(id){
   return unionsOf(id).map(u => {
     const otherId = u.personIds.find(x=>x!==id);
@@ -742,6 +797,10 @@ function syncAllAutoEvents(){
    PAIKALLINEN VARMUUSKOPIO (localStorage) - kätevyyskopio, ei ensisijainen tallennus
 --------------------------------------------------------------------- */
 function autoBackup(){
+  // Tila on saattanut muuttua (henkilö/liitto lisätty, poistettu tai suhde muokattu) juuri
+  // ennen tätä kutsua - autoBackup() kutsutaan käytännössä jokaisen muutoksen jälkeen, joten
+  // se on luonteva, kattava paikka mitätöidä hakuindeksit ennen kuin mitään lukee niitä.
+  invalidateIndexes();
   syncAllAutoEvents();
   try{ localStorage.setItem('sukupuu_autobackup', JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}))); }catch(e){/* ohitetaan */}
 }
@@ -830,9 +889,10 @@ function loadStateFromJson(text){
       unions: data.unions || [],
       events: data.events || []
     };
+    invalidateIndexes(); // state vaihdettu kokonaan - hakuindeksit viittaisivat vanhaan puuhun
     ui.selectedPersonId = null;
     ui.rootId = state.persons[0] ? state.persons[0].id : null;
-    applyUiSettingsFromData(data); // palauta tallennetun tiedoston näkymän oletusasetukset (jos löytyy)
+    applyUiSettingsFromData(data); // palauta tallennetun tiedoston näkymän oletusasetukset (jos löytyy) - lukee personById:tä
     closeEditor();
     syncUiControlsFromState();
     autoBackup();
@@ -855,6 +915,7 @@ function clearTree(){
     '<p>Tämä poistaa <strong>kaikki</strong> henkilöt, suhteet ja tapahtumat nykyisestä sukupuusta ja aloittaa täysin tyhjästä. Toimintoa ei voi perua.</p><p>Jos et ole vielä tallentanut nykyistä sukupuuta tiedostoon, tiedot katoavat pysyvästi.</p>',
     ()=>{
       state = { treeName: 'Sukupuu', persons: [], unions: [], events: [] };
+      invalidateIndexes(); // state vaihdettu kokonaan - ei autoBackup()-kutsua tässä polussa
       ui.selectedPersonId = null;
       ui.rootId = null;
       ui.fileHandle = null;
@@ -1271,6 +1332,7 @@ function importGedcom(text, fileLabel){
   try{
     const data = importGedcomText(text);
     state = data;
+    invalidateIndexes(); // state vaihdettu kokonaan
     ui.selectedPersonId = null;
     ui.rootId = state.persons[0] ? state.persons[0].id : null;
     ui.fileHandle = null;
@@ -2216,6 +2278,7 @@ function openEditor(personId){
 function openEditorForNew(){
   const p = blankPerson();
   state.persons.push(p);
+  invalidateIndexes(); // openEditor(p.id) alla lukee personById(p.id) heti, ennen autoBackup():ia
   ui.rootId = ui.rootId || p.id;
   openEditor(p.id);
   renderRootSelect();
