@@ -1198,26 +1198,28 @@ function importGedcomText(text){
       p.id = genId();
       personByXref[rec.xref] = { person: p, famc: [], fams: [] };
       let j = i+1;
-      let nameSet = false;
+      const nameRecords = []; // kaikki tämän henkilön "1 NAME"-tietueet (GEDCOM sallii useita, esim. syntymänimi + naimisiinmenon jälkeinen nimi)
+      let nimiValintaExplicit = false; // true jos _NIMIVALINTA-lisätunniste löytyi (oma vientimme) - silloin ei arvota oletusta
+      let surnKuollessaExplicit = false; // true jos _SURN_KUOLLESSA-lisätunniste löytyi (oma vientimme)
       while(j < records.length && records[j].level > 0){
         const r = records[j];
         if(r.level===1){
-          if(r.tag==='NAME' && !nameSet){
+          if(r.tag==='NAME'){
             const nm = r.value.match(/^([^\/]*)\/([^\/]*)\/?\s*$/);
-            if(nm){ p.etunimi = nm[1].trim(); p.sukunimi = nm[2].trim(); }
-            else { p.etunimi = r.value.trim(); }
-            // GIVN/SURN ovat NAME:n alitageja (yksi taso syvemmällä) ja ovat AINA ensisijaisia
-            // NAME-rivin sukunimiosaan nähden, koska NAME:n sukunimiosa saattaa (nimiValinta-
-            // asetuksen mukaan) näyttää kuolinajan sukunimeä tai patronyymiä syntymäsukunimen
-            // sijaan - vain SURN on aina täsmälleen syntymäsukunimi.
+            const entry = { etunimi:'', sukunimi:'', tyyppi:'' };
+            if(nm){ entry.etunimi = nm[1].trim(); entry.sukunimi = nm[2].trim(); }
+            else { entry.etunimi = r.value.trim(); }
+            // GIVN/SURN/TYPE ovat NAME:n alitageja (yksi taso syvemmällä) ja GIVN/SURN ovat AINA
+            // ensisijaisia NAME-rivin nimiosiin nähden (NAME-rivin sukunimiosa on vain "näyttönimi").
             let k = j+1;
             while(k < records.length && records[k].level > r.level){
-              if(records[k].tag==='GIVN') p.etunimi = records[k].value.trim();
-              if(records[k].tag==='SURN') p.sukunimi = records[k].value.trim();
+              if(records[k].tag==='GIVN') entry.etunimi = records[k].value.trim();
+              if(records[k].tag==='SURN') entry.sukunimi = records[k].value.trim();
+              if(records[k].tag==='TYPE') entry.tyyppi = records[k].value.trim().toLowerCase();
               k++;
             }
             j = k-1;
-            nameSet = true;
+            nameRecords.push(entry);
           } else if(r.tag==='SEX'){
             p.sukupuoli = r.value.trim()==='M' ? 'mies' : (r.value.trim()==='F' ? 'nainen' : '');
           } else if(r.tag==='OCCU'){
@@ -1230,10 +1232,12 @@ function importGedcomText(text){
             p.mtDna = r.value.trim();
           } else if(r.tag==='_SURN_KUOLLESSA'){
             p.sukunimiKuollessa = r.value.trim();
+            surnKuollessaExplicit = true;
           } else if(r.tag==='_PATRONYYMI'){
             p.patronyymi = r.value.trim();
           } else if(r.tag==='_NIMIVALINTA'){
             p.nimiValinta = r.value.trim();
+            nimiValintaExplicit = true;
           } else if(r.tag==='FAMC'){
             personByXref[rec.xref].famc.push(r.value.trim());
           } else if(r.tag==='FAMS'){
@@ -1253,6 +1257,47 @@ function importGedcomText(text){
           }
         }
         j++;
+      }
+      // Nimen ratkaisu kerätyistä NAME-tietueista. GEDCOM sallii useita "1 NAME"-rivejä samalle
+      // henkilölle - tyypillisesti yksi "2 TYPE maiden" (tai "birth") -merkitty syntymänimi ja
+      // yksi merkitsemätön "ensisijainen" nimi (usein avioliiton kautta saatu/käytössä ollut
+      // sukunimi). Jos tällainen pari löytyy, syntymänimi -> etunimi/sukunimi ja ensisijainen ->
+      // sukunimi kuollessa, ja sukupuussa näytetään oletuksena "kuollessa"-nimi - juuri tämä
+      // vastaa yleistä sukututkimuskäytäntöä (ja vastaa käyttäjän raportoimaa oikeaa tulkintaa).
+      // Ilman "maiden"-merkintää käytetään yksinkertaisesti ensimmäistä NAME-tietuetta, kuten
+      // ennenkin.
+      if(nameRecords.length){
+        const maidenIdx = nameRecords.findIndex(n => n.tyyppi && (n.tyyppi.includes('maiden') || n.tyyppi.includes('birth')));
+        let usedIdxs;
+        if(maidenIdx >= 0 && nameRecords.length >= 2){
+          const maiden = nameRecords[maidenIdx];
+          const primaryIdx = nameRecords.findIndex((n,idx)=>idx!==maidenIdx);
+          const primary = primaryIdx>=0 ? nameRecords[primaryIdx] : nameRecords[0];
+          usedIdxs = [maidenIdx, primaryIdx>=0?primaryIdx:0];
+          p.etunimi = maiden.etunimi || primary.etunimi;
+          p.sukunimi = maiden.sukunimi || primary.sukunimi;
+          if(primary.sukunimi && primary.sukunimi !== p.sukunimi && !surnKuollessaExplicit){
+            p.sukunimiKuollessa = primary.sukunimi;
+            if(!nimiValintaExplicit) p.nimiValinta = 'kuollessa';
+          }
+        } else {
+          const primary = nameRecords[0];
+          usedIdxs = [0];
+          p.etunimi = primary.etunimi;
+          p.sukunimi = primary.sukunimi;
+        }
+        // Jos henkilöllä on enemmän kuin kaksi NAME-tietuetta (esim. useita eri TYPE-arvoja:
+        // "married", "aka", "immigrant", jne.), näitä "ylimääräisiä" nimimuotoja ei hukata,
+        // vaan ne lisätään vapaamuotoisena tekstinä Kuvaus/muistiinpanot-kenttään, jotta tieto
+        // säilyy edes jossain muodossa eikä katoa hiljaisesti tuonnissa.
+        const extra = nameRecords.filter((n,idx)=>!usedIdxs.includes(idx));
+        if(extra.length){
+          const extraText = 'Muita nimimuotoja GEDCOM-tuonnista: ' + extra.map(n=>{
+            const nimi = [n.etunimi, n.sukunimi].filter(Boolean).join(' ') || '(nimetön)';
+            return n.tyyppi ? `${nimi} (${n.tyyppi})` : nimi;
+          }).join('; ');
+          p.kuvaus = p.kuvaus ? (p.kuvaus + '\n' + extraText) : extraText;
+        }
       }
       persons.push(p);
       i = j;
