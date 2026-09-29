@@ -290,6 +290,7 @@
   <div class="sep"></div>
   <div class="grp">
     <button id="btnPrintTree" title="Tulosta näkyvä sukupuu">🖨 Tulosta</button>
+    <button id="btnSukukirja" title="Luo sukukirja (perhehistoriikki HTML-tiedostona)">📖 Sukukirja</button>
     <button id="btnClearTree" title="Tyhjennä koko sukupuu ja aloita uusi">🗑 Tyhjennä sukupuu</button>
   </div>
   <div class="sep"></div>
@@ -1393,6 +1394,384 @@ function importGedcom(text, fileLabel){
 }
 
 /* ---------------------------------------------------------------------
+   SUKUKIRJA (perhehistoriikki - perinteinen "Taulu N" -muotoinen raportti)
+   Tuottaa koko sukupuusta perinteisen suomalaisen sukukirjan tyylisen
+   HTML-dokumentin: jokainen "runkohenkilö" (henkilö, jolla on oma
+   puoliso/lapsi-tieto) saa juoksevasti numeroidun "Taulun", sukupolvi
+   merkitään roomalaisella numerolla, puolisot ja lapset listataan taulun
+   alla, ja lopussa on aakkosellinen suku- ja myöhempi nimi -hakemisto.
+   Algoritmi (dokumentoitu tarkasti, koska kyseessä on melko monimutkainen
+   graafin läpikäynti):
+     1) "Runkohenkilöiksi" (oman Taulun saaviksi) kelpaavat KAIKKI henkilöt,
+        joilla ei ole tiedossa vanhempia (nämä ovat mahdollisia useiden
+        erillisten sukuhaarojen "alkupisteitä", vaikka heillä ei olisi
+        omaa puolisoa/lasta - näin ketään ei hiljaa jätetä kirjasta pois).
+     2) Näistä alkaen edetään leveyshaulla (BFS) lapsiin: lapsi saa OMAN
+        Taulun vain jos hänellä on itsellään puoliso ja/tai lapsia
+        (childrenOf/unionsOf ei tyhjä) - muuten lapsi jää vain nimeksi
+        vanhempansa "Lapset:"-listaan, ilman omaa Taulua/linkkiä.
+     3) Jokainen henkilö saa KORKEINTAAN yhden oman Taulun (globaali
+        "käsitelty"-joukko estää saman henkilön käsittelyn kahdesti, esim.
+        jos hänet tavoitettaisiin kahta eri sukuhaaraa pitkin).
+     4) Puoliso (joka EI ole se henkilö, jonka kautta tähän sukuhaaraan
+        tultiin) esitetään "Puoliso:"-rivillä. Jos puolisolla ITSELLÄÄN on
+        tiedossa vanhemmat, näytetään "Vanhemmat: X ja Y." -rivi (koska
+        puolison omaa esi-isälinjaa ei tässä raportissa lähdetä avaamaan
+        omaksi ketjukseen). Jos puoliso ON MYÖS saanut oman Taulun jostain
+        muusta yhteydestä (esim. hänen omat vanhempansa ovat myös
+        runkohenkilöitä ja hänet on käsitelty sitä kautta), lisätään myös
+        risteävä "(Taulu N)"-linkki hänen omaan Tauluunsa.
+   Nimen esitys nojaa sovelluksen omaan nimimalliin: displaySukunimi(p) on
+   se sukunimi joka näytetään ensisijaisesti (voi olla synt. suku- tai
+   "kuollessa"-sukunimi riippuen nimiValinta-kentästä), ja mahdollinen
+   TOINEN, eri sukunimi näytetään perässä "e. "-merkinnällä (esim.
+   "Teija Maarit Österlund e. Haara"), aivan kuten liitteenä olleessa
+   malli-sukukirjassa.
+--------------------------------------------------------------------- */
+function toRoomalainen(num){
+  const vals = [[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],
+                [50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];
+  let n = Math.max(1, Math.floor(num)||1);
+  let res = '';
+  for(const [v,s] of vals){ while(n>=v){ res+=s; n-=v; } }
+  return res || 'I';
+}
+
+// Päivämäärän karkea lajitteluavain ("dd.mm.yyyy" / "mm.yyyy" / "yyyy" / tyhjä).
+// Puuttuva päivämäärä lajitellaan aina viimeiseksi (Infinity).
+function sukukirjaPvmAvain(s){
+  if(!s) return Infinity;
+  const str = String(s).trim();
+  let y=0, m=0, d=0;
+  let mm = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(mm){ d=+mm[1]; m=+mm[2]; y=+mm[3]; }
+  else {
+    mm = str.match(/^(\d{1,2})\.(\d{4})$/);
+    if(mm){ m=+mm[1]; y=+mm[2]; }
+    else {
+      mm = str.match(/(\d{4})/);
+      if(mm) y=+mm[1];
+    }
+  }
+  if(!y) return Infinity;
+  return y*10000 + m*100 + d;
+}
+
+// Henkilön "toinen" (ei näytettävä) sukunimi, joka lisätään "e. "-merkinnällä
+// näytettävän nimen perään, jos se on tiedossa ja eroaa näytettävästä.
+function sukukirjaEntinenSukunimi(p){
+  const disp = displaySukunimi(p);
+  if(!disp) return '';
+  if(p.sukunimi && p.sukunimi !== disp) return p.sukunimi;
+  if(p.sukunimiKuollessa && p.sukunimiKuollessa !== disp) return p.sukunimiKuollessa;
+  return '';
+}
+
+// Henkilön nimi lihavoituna HTML:nä: Etunimi [Patronyymi] Sukunimi [e. Entinen].
+function sukukirjaNimiHtml(p){
+  const osat = [];
+  if(p.etunimi) osat.push('<b>'+escapeHtml(p.etunimi)+'</b>');
+  if(p.patronyymi && p.nimiValinta !== 'patronyymi') osat.push('<b>'+escapeHtml(p.patronyymi)+'</b>');
+  const disp = displaySukunimi(p);
+  if(disp) osat.push('<b>'+escapeHtml(disp)+'</b>');
+  const entinen = sukukirjaEntinenSukunimi(p);
+  if(entinen) osat.push('<b> e. </b><b>'+escapeHtml(entinen)+'</b>');
+  return osat.join(' ');
+}
+
+// Henkilön nimi tavallisena (ei-lihavoituna) tekstinä, käytetään mm.
+// "Vanhemmat: ..." -maininnoissa.
+function sukukirjaNimiTeksti(p){
+  const osat = [p.etunimi||''];
+  if(p.patronyymi && p.nimiValinta !== 'patronyymi') osat.push(p.patronyymi);
+  const disp = displaySukunimi(p);
+  if(disp) osat.push(disp);
+  let s = osat.filter(Boolean).join(' ');
+  const entinen = sukukirjaEntinenSukunimi(p);
+  if(entinen) s += ' e. ' + entinen;
+  return s.trim() || '(nimetön)';
+}
+
+// "s. X Y, k. A B." -tyylinen elämäntietorivi (ilman ammattia/kuvausta).
+function sukukirjaPvmRivi(p){
+  const synt = [p.syntAika||'', p.syntPaikka||''].filter(Boolean).join(' ');
+  const kuol = [p.kuolAika||'', p.kuolPaikka||''].filter(Boolean).join(' ');
+  const osat = [];
+  if(synt) osat.push('s. '+synt);
+  if(kuol) osat.push('k. '+kuol);
+  if(!osat.length) return '';
+  return osat.join(', ') + '.';
+}
+
+// Henkilön "Vanhemmat: X ja Y." -maininta (käytetään sisään naineelle
+// puolisolle, jonka omaa esi-isälinjaa ei tässä avata omaksi Taulukseen).
+function sukukirjaVanhemmatRivi(p){
+  const vanhemmat = (p.parentIds||[]).map(personById).filter(Boolean);
+  if(!vanhemmat.length) return '';
+  const kuvaukset = vanhemmat.map(vp=>{
+    const pvm = sukukirjaPvmRivi(vp).replace(/\.$/,'');
+    return escapeHtml(sukukirjaNimiTeksti(vp)) + (pvm ? ', '+escapeHtml(pvm) : '');
+  });
+  return 'Vanhemmat: ' + kuvaukset.join(' ja ') + '.';
+}
+
+// Henkilön kaikki "perheet" (liitto + siihen kuuluvat lapset), mukaan lukien
+// mahdolliset lapset joilla ei ole erillistä liitto-tietuetta (esim. vain
+// toinen vanhempi tiedossa). Sama ryhmittelyperiaate kuin GEDCOM-viennissä.
+function sukukirjaPerheet(personId){
+  const byKey = new Map(); // "id1|id2" -> {partnerId, union, children:[]}
+  const ryhmat = [];
+  unionsOf(personId).forEach(u=>{
+    const key = u.personIds.slice().sort().join('|');
+    const partnerId = u.personIds.find(x=>x!==personId) || null;
+    const g = { partnerId, union: u, children: [] };
+    byKey.set(key, g);
+    ryhmat.push(g);
+  });
+  childrenOf(personId).forEach(child=>{
+    const pids = (child.parentIds||[]).slice();
+    if(!pids.length) return;
+    const key = pids.slice().sort().join('|');
+    let g = byKey.get(key);
+    if(!g){
+      const partnerId = pids.find(x=>x!==personId) || null;
+      g = { partnerId, union: null, children: [] };
+      byKey.set(key, g);
+      ryhmat.push(g);
+    }
+    g.children.push(child);
+  });
+  ryhmat.forEach(g=>{
+    g.children.sort((a,b)=> sukukirjaPvmAvain(a.syntAika) - sukukirjaPvmAvain(b.syntAika));
+  });
+  ryhmat.sort((a,b)=>{
+    const ak = a.union && a.union.alkoi ? sukukirjaPvmAvain(a.union.alkoi) : Infinity;
+    const bk = b.union && b.union.alkoi ? sukukirjaPvmAvain(b.union.alkoi) : Infinity;
+    return ak - bk;
+  });
+  return ryhmat;
+}
+
+function generateSukukirja(){
+  if(!state.persons.length){ alert('Sukupuussa ei ole yhtään henkilöä - sukukirjaa ei voi luoda.'); return; }
+
+  // --- Vaihe 1: Taulu-numeroiden ja sukupolvien määritys (leveyshaku) ---
+  const tableOf = new Map(); // personId -> {num, gen, parentId}
+  const order = [];          // personId-lista Taulu-numeron mukaisessa järjestyksessä
+  const visited = new Set();
+  let nextNum = 1;
+
+  // Antaa henkilölle oman Taulun JA merkitsee samalla hänen NYKYISET puolisonsa
+  // "käytetyiksi" (visited, mutta ilman omaa Taulua). Tämä vastaa perinteisen
+  // sukukirjan käytäntöä: kun pariskunnasta toinen on jo "runkohenkilö" (oman
+  // sukuhaaransa kautta tavoitettu), hänen puolisoaan ei enää käsitellä
+  // erillisenä, itsenäisenä runkohenkilönä - vaikka puolisolla itsellään ei
+  // olisi tiedossa omia vanhempia (muuten esim. aviopari, jossa kummallakaan
+  // ei ole tiedossa vanhempia, saisi virheellisesti KAKSI erillistä Taulua
+  // saman perheen samoille lapsille). Jos puoliso KUITENKIN myöhemmin
+  // löytyisi jonkun toisen henkilön LAPSENA (siis hänellä on omat vanhemmat
+  // tässä sukupuussa), hän ei silti enää voi saada omaa Taulua, koska hänet on
+  // jo merkitty käytetyksi - hän saa sen sijaan risteävän "(Taulu N)"-linkin
+  // tässä Taulussa JA näkyy siellä muualla vain viittauksena omaan Taulu-
+  // numeroonsa. Tämä järjestäytyy täysin sen mukaan, KUMPI pariskunnasta
+  // tavoitetaan ensin puun läpikäynnissä (state.persons-taulukon järjestys) -
+  // aivan kuten alkuperäisessäkin mallissa sukukirjan Taulu-numerointi on
+  // riippuvainen käsittelyjärjestyksestä.
+  function annaTaulu(personId, gen, parentId){
+    visited.add(personId);
+    tableOf.set(personId, {num: nextNum++, gen, parentId});
+    order.push(personId);
+    spousesOf(personId).forEach(({person:sp})=>{
+      if(sp) visited.add(sp.id);
+    });
+  }
+
+  const roots = state.persons.filter(p => !p.parentIds || !p.parentIds.length);
+  roots.forEach(root=>{
+    if(visited.has(root.id)) return;
+    annaTaulu(root.id, 1, null);
+    const queue = [root.id];
+    while(queue.length){
+      const curId = queue.shift();
+      const curGen = tableOf.get(curId).gen;
+      const lapset = childrenOf(curId).slice().sort((a,b)=> sukukirjaPvmAvain(a.syntAika) - sukukirjaPvmAvain(b.syntAika));
+      lapset.forEach(child=>{
+        if(visited.has(child.id)) return; // joko jo oma Taulu, tai jo "käytetty" puolisona
+        const saaOmanTaulun = unionsOf(child.id).length > 0 || childrenOf(child.id).length > 0;
+        if(!saaOmanTaulun) return; // jää vain nimeksi vanhemman Lapset-listaan
+        annaTaulu(child.id, curGen+1, curId);
+        queue.push(child.id);
+      });
+    }
+  });
+
+  if(!order.length){
+    alert('Sukupuusta ei löytynyt yhtään henkilöä, jolla olisi puoliso tai lapsia - sukukirjaa ei voitu muodostaa mielekkäästi.');
+    return;
+  }
+
+  // --- Vaihe 2: Renderöinti + samalla hakemistoa varten "esiintyy Taulussa N" -seuranta ---
+  const esiintyySeuranta = new Map(); // personId -> Set<num>
+  function merkitseEsiintyminen(personId, num){
+    let s = esiintyySeuranta.get(personId);
+    if(!s){ s = new Set(); esiintyySeuranta.set(personId, s); }
+    s.add(num);
+  }
+
+  const osiot = [];
+  order.forEach(personId=>{
+    const p = personById(personId);
+    if(!p) return;
+    const info = tableOf.get(personId);
+    merkitseEsiintyminen(personId, info.num);
+
+    let html = '';
+    html += '<div class="sk-taulu-otsikko"><a name="Taulu'+info.num+'"></a>Taulu '+info.num+'</div>\n';
+    html += '<div class="sk-henkilo">';
+    html += '<span class="sk-sukupolvi">'+toRoomalainen(info.gen)+'</span> ';
+    html += sukukirjaNimiHtml(p);
+    if(info.parentId != null && tableOf.has(info.parentId)){
+      html += ' <span class="sk-linkki">(<a href="#Taulu'+tableOf.get(info.parentId).num+'">Taulusta '+tableOf.get(info.parentId).num+'</a>)</span>';
+    }
+    html += '</div>\n';
+    const elamanTiedot = [p.ammatti||'', sukukirjaPvmRivi(p)].filter(Boolean).join(', ');
+    const lisarivit = [elamanTiedot, p.kuvaus||''].filter(Boolean).map(escapeHtml);
+    if(lisarivit.length) html += '<div class="sk-tiedot">'+lisarivit.join('<br>')+'</div>\n';
+
+    const perheet = sukukirjaPerheet(personId);
+    perheet.forEach((g, gi)=>{
+      const puoliso = g.partnerId ? personById(g.partnerId) : null;
+      if(puoliso){
+        merkitseEsiintyminen(puoliso.id, info.num);
+        const otsikko = perheet.filter(x=>x.partnerId).length > 1
+          ? (perheet.filter(x=>x.partnerId).indexOf(g)+1)+'. puoliso'
+          : 'Puoliso';
+        const pvmOsat = [];
+        if(g.union && g.union.alkoi) pvmOsat.push(g.union.alkoi);
+        if(g.union && g.union.paikka) pvmOsat.push(g.union.paikka);
+        let pvmTeksti = pvmOsat.join(' ');
+        if(g.union && g.union.paattyi) pvmTeksti += (pvmTeksti?', ':'') + 'eronneet ' + g.union.paattyi;
+        if(g.union && g.union.tyyppi === 'avoliitto') pvmTeksti += (pvmTeksti?' ':'') + '(Avoliitto)';
+        html += '<div class="sk-puoliso-otsikko">'+escapeHtml(otsikko)+':'+(pvmTeksti?' '+escapeHtml(pvmTeksti):'')+'</div>\n';
+        html += '<div class="sk-henkilo sk-puoliso">'+sukukirjaNimiHtml(puoliso);
+        if(tableOf.has(puoliso.id)){
+          html += ' <span class="sk-linkki">(<a href="#Taulu'+tableOf.get(puoliso.id).num+'">Taulu '+tableOf.get(puoliso.id).num+'</a>)</span>';
+        }
+        html += '</div>\n';
+        const pElamanTiedot = [puoliso.ammatti||'', sukukirjaPvmRivi(puoliso)].filter(Boolean).join(', ');
+        const pLisarivit = [pElamanTiedot, puoliso.kuvaus||''].filter(Boolean).map(escapeHtml);
+        const vanhemmatRivi = sukukirjaVanhemmatRivi(puoliso);
+        if(vanhemmatRivi) pLisarivit.push(escapeHtml(vanhemmatRivi));
+        if(pLisarivit.length) html += '<div class="sk-tiedot">'+pLisarivit.join('<br>')+'</div>\n';
+      }
+      if(g.children.length){
+        html += '<div class="sk-lapset-otsikko">Lapset:</div>\n<ul class="sk-lapset">';
+        g.children.forEach(child=>{
+          merkitseEsiintyminen(child.id, info.num);
+          let rivi = '<li><b>'+escapeHtml(child.etunimi||'')+(child.patronyymi && child.nimiValinta!=='patronyymi' ? ' '+escapeHtml(child.patronyymi):'')+'</b>';
+          const pvm = sukukirjaPvmRivi(child);
+          if(pvm) rivi += ' '+escapeHtml(pvm);
+          if(tableOf.has(child.id)){
+            rivi += ' <span class="sk-linkki">(<a href="#Taulu'+tableOf.get(child.id).num+'">Tauluun '+tableOf.get(child.id).num+'</a>)</span>';
+          }
+          rivi += '</li>';
+          html += rivi;
+        });
+        html += '</ul>\n';
+      }
+    });
+    html += '<div class="sk-nav"><a href="#alku">Alku</a> | <a href="#hakemisto">Hakemisto</a></div>\n';
+    osiot.push(html);
+  });
+
+  // --- Vaihe 3: aakkosellinen suku- ja myöhempi nimi -hakemisto ---
+  const hakuRivit = [];
+  esiintyySeuranta.forEach((numJoukko, personId)=>{
+    const p = personById(personId);
+    if(!p) return;
+    const numerot = Array.from(numJoukko).sort((a,b)=>a-b);
+    const nimet = new Set();
+    if(p.sukunimi) nimet.add(p.sukunimi);
+    if(p.sukunimiKuollessa) nimet.add(p.sukunimiKuollessa);
+    if(!nimet.size) nimet.add('');
+    nimet.forEach(sukunimi=>{
+      hakuRivit.push({ sukunimi: sukunimi||'', etunimi: p.etunimi||'', pvmAvain: sukukirjaPvmAvain(p.syntAika), synt: yearOf(p.syntAika), numerot });
+    });
+  });
+  hakuRivit.sort((a,b)=>{
+    const s = a.sukunimi.localeCompare(b.sukunimi, 'fi');
+    if(s!==0) return s;
+    const e = a.etunimi.localeCompare(b.etunimi, 'fi');
+    if(e!==0) return e;
+    return a.pvmAvain - b.pvmAvain;
+  });
+  let hakemistoHtml = '<table class="sk-hakemisto-taulu">\n';
+  hakuRivit.forEach(r=>{
+    hakemistoHtml += '<tr><td>'+escapeHtml(r.sukunimi)+'</td><td>'+escapeHtml(r.etunimi)+(r.synt?', s. '+escapeHtml(r.synt):'')+'</td><td>'+
+      r.numerot.map(n=>'<a href="#Taulu'+n+'">'+n+'</a>').join(', ')+'</td></tr>\n';
+  });
+  hakemistoHtml += '</table>\n';
+
+  const nimi = escapeHtml(state.treeName || 'Sukupuu');
+  const luotu = new Date().toLocaleDateString('fi-FI');
+  const doc = `<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<title>${nimi} - Sukukirja</title>
+<style>
+  body{ font-family: Georgia, 'Times New Roman', serif; max-width: 900px; margin: 0 auto; padding: 24px; color:#222; background:#fdfcf8; }
+  h1{ text-align:center; font-size:1.6em; margin-bottom:0; }
+  .sk-luontipvm{ text-align:center; color:#777; font-size:0.85em; margin-bottom:24px; }
+  .sk-alkulinkit{ text-align:center; margin-bottom:24px; }
+  .sk-alkulinkit a{ color:#2a5a3a; text-decoration:none; margin:0 6px; }
+  .sk-taulu-otsikko{ background:#2a5a3a; color:#fff; text-align:center; font-weight:bold; padding:6px; margin-top:34px; border-radius:4px 4px 0 0; }
+  .sk-henkilo{ border:1px solid #2a5a3a; border-top:none; padding:8px 12px 2px; font-size:1.05em; }
+  .sk-sukupolvi{ display:inline-block; min-width:1.6em; font-weight:bold; color:#2a5a3a; }
+  .sk-tiedot{ border:1px solid #2a5a3a; border-top:none; padding:2px 12px 10px; font-size:0.95em; color:#333; }
+  .sk-puoliso-otsikko{ border:1px solid #ccc; border-top:1px solid #2a5a3a; background:#f2efe6; padding:6px 12px; font-style:italic; margin-top:6px; }
+  .sk-henkilo.sk-puoliso{ border-color:#ccc; }
+  .sk-lapset-otsikko{ border:1px solid #ccc; border-top:none; background:#f8f7f2; padding:4px 12px; font-weight:bold; font-size:0.9em; }
+  ul.sk-lapset{ border:1px solid #ccc; border-top:none; margin:0; padding:6px 12px 10px 28px; font-size:0.95em; }
+  ul.sk-lapset li{ margin-bottom:3px; }
+  .sk-linkki{ font-style:italic; font-size:0.9em; }
+  .sk-linkki a{ color:#2a5a3a; }
+  .sk-nav{ text-align:center; font-size:0.85em; color:#888; margin:6px 0 0; }
+  .sk-nav a{ color:#2a5a3a; text-decoration:none; }
+  #hakemisto{ margin-top:48px; }
+  #hakemisto h2{ text-align:center; border-bottom:2px solid #2a5a3a; padding-bottom:8px; }
+  table.sk-hakemisto-taulu{ width:100%; border-collapse:collapse; font-size:0.9em; }
+  table.sk-hakemisto-taulu td{ padding:2px 8px; border-bottom:1px solid #eee; vertical-align:top; }
+  @media print{ .sk-nav, .sk-alkulinkit{ display:none; } }
+</style>
+</head>
+<body>
+<a name="alku"></a>
+<h1>${nimi}</h1>
+<div class="sk-luontipvm">Sukukirja - luotu ${luotu}</div>
+<div class="sk-alkulinkit"><a href="#hakemisto">Suku- ja myöhempi nimi -hakemisto</a></div>
+${osiot.join('\n')}
+<a name="hakemisto"></a>
+<div id="hakemisto">
+<h2>Suku- ja myöhempi nimi -hakemisto</h2>
+${hakemistoHtml}
+</div>
+<div class="sk-alkulinkit"><a href="#alku">Alkuun</a></div>
+</body>
+</html>
+`;
+
+  const blob = new Blob([doc], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.treeName||'sukupuu').replace(/[^a-zA-Z0-9äöåÄÖÅ_ -]/g,'').trim() || 'sukupuu';
+  a.href = url; a.download = safeName + '_sukukirja.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  setFileStatus('Sukukirja luotu (' + order.length + ' taulua)');
+}
+
+/* ---------------------------------------------------------------------
    MODAALI (yksinkertainen valinta-/lisäysikkuna)
 --------------------------------------------------------------------- */
 function showModal(title, bodyHtml, onOk){
@@ -1649,10 +2028,64 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
   const sibPos = {};
   const positioned = new Set();
   const memoDescW = new Map();
+  const memoCluster = new Map();
 
+  // Nopea törmäystarkistus sijoittelulle: jokaiselle sukupolvelle (gen) pidetään
+  // lajiteltua taulukkoa jo varatuista sib-sijainneista, jota päivitetään SITÄ MUKAA
+  // kun henkilöitä sijoitetaan (ks. occupy()). Vapaan kohdan haku (findFreeCenter)
+  // käyttää tähän binäärihakua, jolloin yksittäinen haku on O(log n + törmäysten
+  // määrä) täyden O(n):n läpikäynnin sijaan. Ilman tätä iso "varasijoittelu"-vaihe
+  // (ks. alempana "Vaihe 3", esim. sukupolvi jossa on satoja sisaruksia) skannasi
+  // jokaisella sijoituksella läpi KAIKKI jo sijoitetut saman sukupolven solmut ja
+  // toisti tätä vielä enintään 300 kertaa törmäyksen sattuessa - tuhansien solmujen
+  // puussa tämä näkyi useiden sekuntien hidastumana keskitettäessä sisarusrikkaaseen
+  // henkilöön.
+  const occupiedByGen = new Map(); // gen -> lajiteltu taulukko varatuista sib-sijainneista
+  function occupy(g, val){
+    let arr = occupiedByGen.get(g);
+    if(!arr){ arr = []; occupiedByGen.set(g, arr); }
+    let lo=0, hi=arr.length;
+    while(lo<hi){ const mid=(lo+hi)>>1; if(arr[mid]<val) lo=mid+1; else hi=mid; }
+    arr.splice(lo, 0, val);
+  }
+  function findFreeCenter(g, desiredCenter, minGap){
+    const arr = occupiedByGen.get(g);
+    if(!arr || !arr.length) return desiredCenter;
+    let center = desiredCenter;
+    let tries = 0;
+    while(tries < 300){
+      let lo=0, hi=arr.length;
+      while(lo<hi){ const mid=(lo+hi)>>1; if(arr[mid] < center) lo=mid+1; else hi=mid; }
+      let blocker = null;
+      if(lo>0 && (center - arr[lo-1]) < minGap) blocker = arr[lo-1];
+      if(lo<arr.length && (arr[lo] - center) < minGap){
+        if(blocker===null || (arr[lo]-center) < (center-blocker)) blocker = arr[lo];
+      }
+      if(blocker===null) return center;
+      center = blocker + minGap;
+      tries++;
+    }
+    return center;
+  }
+
+  // Kaikki tässä sukupolvessa näkyvät puolisot (EI vain ensimmäinen/"ensisijainen") -
+  // henkilöllä voi olla useampi puoliso samaan aikaan näkyvissä (esim. kaksi
+  // avioliittoa), ja jokainen niistä on sijoitettava omaksi, muista puolisoista
+  // erottuvaksi lohkoksi (ks. positionDescendants), jotta lasten yhdysviivat eivät
+  // ala kulkea väärän/toisen puolison laatikon läpi.
+  function visibleSpousesOf(id){
+    const seen = new Set();
+    const out = [];
+    spousesOf(id).forEach(({person:sp})=>{
+      if(sp && sp.id in gen && gen[sp.id]===gen[id] && sp.id!==id && !seen.has(sp.id)){
+        seen.add(sp.id); out.push(sp.id);
+      }
+    });
+    return out;
+  }
   function primarySpouseOf(id){
-    const sps = spousesOf(id).filter(({person:sp})=>sp && sp.id in gen && gen[sp.id]===gen[id]);
-    return sps.length ? sps[0].person.id : null;
+    const sps = visibleSpousesOf(id);
+    return sps.length ? sps[0] : null;
   }
   function visibleChildrenOf(id){
     return childrenOf(id).filter(c=>c.id in gen && gen[c.id]===gen[id]+1);
@@ -1661,14 +2094,38 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
     return (personById(id).parentIds||[]).filter(pid=>pid in gen && gen[pid]===gen[id]-1);
   }
 
+  // Henkilön koko puolisoklusteri: hän itse + kaikki näkyvät puolisot + NÄIDEN
+  // omat näkyvät puolisot jne. transitiivisesti (esim. jos A on naimisissa B:n
+  // kanssa ja B on naimisissa myös C:n kanssa, klusteri on {A,B,C} vaikka A ja C
+  // eivät ole suoraan puolisoita toisilleen). Tätä tarvitaan, jotta koko ketju
+  // varataan yhtenä yhtenäisenä lohkona (ks. buildSpousalChain/positionDescendants) -
+  // muuten esim. C saattaisi jäädä irralleen muualle "varasijoitteluun" B:n toisen
+  // puolison taakse, vaikka C kuuluisi olla suoraan B:n vierellä.
+  function clusterOf(id){
+    if(memoCluster.has(id)) return memoCluster.get(id);
+    const visited = new Set([id]);
+    const queue = [id];
+    while(queue.length){
+      const cur = queue.shift();
+      visibleSpousesOf(cur).forEach(sp=>{ if(!visited.has(sp)){ visited.add(sp); queue.push(sp); } });
+    }
+    visited.forEach(v=>memoCluster.set(v, visited));
+    return visited;
+  }
   function descendantWidth(id){
     if(memoDescW.has(id)) return memoDescW.get(id);
     memoDescW.set(id, 1); // suoja mahdollisia poikkeustapauksia vastaan
-    const sp = primarySpouseOf(id);
-    const own = sp ? 2 : 1;
-    const kids = visibleChildrenOf(id);
-    const w = kids.length ? Math.max(own, kids.reduce((s,c)=>s+descendantWidth(c.id),0)) : own;
-    memoDescW.set(id, w);
+    const cluster = clusterOf(id);
+    const own = cluster.size;
+    const seenKid = new Set();
+    let kidsWidthSum = 0, anyKid = false;
+    cluster.forEach(pid=>{
+      visibleChildrenOf(pid).forEach(c=>{
+        if(!seenKid.has(c.id)){ seenKid.add(c.id); anyKid = true; kidsWidthSum += descendantWidth(c.id); }
+      });
+    });
+    const w = anyKid ? Math.max(own, kidsWidthSum) : own;
+    cluster.forEach(pid=>memoDescW.set(pid, w));
     return w;
   }
   // Esivanhempien sijoittelu tehdään ERI menetelmällä kuin jälkeläisten: sen sijaan,
@@ -1700,55 +2157,121 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
     return x;
   }
 
-  // Jälkeläiset: sijoittaa henkilön 'id' (ja hänen puolisonsa, jos näkyvissä)
-  // keskitetysti annettuun sib-keskikohtaan, ja jatkaa rekursiivisesti lapsiin.
+  // Koko puolisoketjun järjestys: 'id':n oma puolisoklusteri (ks. clusterOf) EI vain
+  // 'id':n suoria puolisoita vaan myös näiden MUIDEN puolisoiden ketju (esim. jos
+  // Irina on naimisissa sekä Esan että Andrein kanssa, ja tätä kutsutaan Esalle,
+  // ketju kattaa myös Andrein) järjestetään yhdeksi vierekkäiseksi jonoksi niin,
+  // että jokainen puolisopari ('id':n oma tai jonkun muun ketjun jäsenen) päätyy
+  // AIDOSTI vierekkäin. 'id' itse asetetaan ensin, ja jokaisen sen puolison
+  // "loppupää" (hänen MUUT puolisonsa) jatkaa ketjua ulospäin samaan suuntaan kuin
+  // itse puoliso - näin esim. kolmen hengen ketju Esa-Irina-Andrei säilyy yhtenä
+  // katkeamattomana jonona (Esa vierekkäin Irinan kanssa JA Irina vierekkäin
+  // Andrein kanssa), sen sijaan että Andrei ajautuisi irralleen "varasijoitteluun"
+  // vasta kaikkien lasten/sisarusten jälkeen (juuri tästä käyttäjä raportoi puolison
+  // yhdysviivan kulkevan sisarusten ylitse).
+  function buildSpousalChain(startId, visited){
+    visited.add(startId);
+    const neighbors = visibleSpousesOf(startId).filter(sp=>!positioned.has(sp) && !visited.has(sp));
+    let left = [], right = [];
+    neighbors.forEach((nb,i)=>{
+      if(visited.has(nb)) return;
+      const sub = buildSpousalChain(nb, visited);
+      if(i % 2 === 0) right.push(...sub); else left.unshift(...sub);
+    });
+    return [...left, startId, ...right];
+  }
+
+  // Jälkeläiset: sijoittaa henkilön 'id':n koko puolisoketjun (ks. buildSpousalChain
+  // yllä) yhtenä vierekkäisenä lohkona annettuun sib-keskikohtaan, ja jatkaa
+  // rekursiivisesti kaikkien ketjun jäsenten lapsiin yhdessä. Tämä on tärkeää, koska
+  // perheen (vanhempi+vanhempi -> lapset) yhdysviivan paikka lasketaan normaalisti
+  // näiden kahden vanhemman sijaintien KESKIARVONA (ks. linkkien muodostus alempana) -
+  // jos joku kolmas henkilö olisi sijoitettuna näiden kahden väliin, keskiarvo osuisi
+  // virheellisesti tuon kolmannen henkilön laatikon kohdalle. Jos joku ketjun jäsenistä
+  // on naimisissa 3+ kertaa, vain kaksi lähintä saadaan aidosti vierekkäin hänen
+  // kanssaan - kauempana olevien puolisoiden perheiden yhdysviiva-logiikka tunnistaa
+  // tämän erikseen (ks. alempana "ei-vierekkäinen pari" -tapaus) eikä silloinkaan
+  // piirrä viivaa toisen laatikon läpi.
   function positionDescendants(id, sibCenter){
     if(positioned.has(id)) return;
-    const sp = primarySpouseOf(id);
-    const hasSp = sp && !positioned.has(sp);
+    const chain = buildSpousalChain(id, new Set());
+    const idIdx = chain.indexOf(id);
+    const blockCount = chain.length;
+    const blockCenterOffset = ((0-idIdx) + (chain.length-1-idIdx)) / 2;
+
     // Törmäyksen esto: jos tälle riville on jo sijoitettu joku toinen (esim. varasijoittelusta
-    // kaskadoitunut haara osuisi muutoin päällekkäin toisen suvunhaaran kanssa), siirretään
-    // koko keskikohtaa oikealle kunnes tila on vapaa. Juuren/kantalinjan ensisijaisessa
-    // sijoittelussa tätä riviä ei vielä ole muilla varattu, joten tämä ei muuta niiden tulosta.
-    let center = sibCenter;
-    const minGap = hasSp ? sibUnit*1.4 : sibUnit*0.9;
-    let tries = 0;
-    while(true){
-      const rowNodes = ids.filter(other=>gen[other]===gen[id] && positioned.has(other) && other!==id && other!==sp);
-      if(!rowNodes.some(other=>Math.abs(sibPos[other]-center) < minGap) || tries>=300) break;
-      center += sibUnit; tries++;
-    }
-    if(hasSp){
-      sibPos[id] = center - sibUnit/2; positioned.add(id);
-      sibPos[sp] = center + sibUnit/2; positioned.add(sp);
-    } else {
-      sibPos[id] = center; positioned.add(id);
-    }
-    layoutChildrenOf(id, center);
+    // kaskadoitunut haara osuisi muutoin päällekkäin toisen suvunhaaran kanssa), etsitään
+    // lähin vapaa kohta (ks. findFreeCenter - O(log n), ei käy läpi kaikkia rivin solmuja).
+    const minGap = sibUnit*(0.9 + (blockCount-1)*0.5);
+    const center = findFreeCenter(gen[id], sibCenter, minGap);
+    chain.forEach((pid,i)=>{
+      const pos = center + (i - idIdx - blockCenterOffset)*sibUnit;
+      sibPos[pid] = pos; positioned.add(pid); occupy(gen[pid], pos);
+    });
+    layoutChildrenOf(chain, center);
   }
-  function layoutChildrenOf(id, anchorCenter){
-    const kids = visibleChildrenOf(id).filter(c=>!positioned.has(c.id));
+  function layoutChildrenOf(idOrChain, anchorCenter){
+    const chain = Array.isArray(idOrChain) ? idOrChain : [idOrChain];
+    // Kerätään KAIKKIEN ketjun jäsenten lapset yhteen (kaksoiskappaleet poistaen -
+    // yhteisen lapsen molemmat vanhemmat voivat olla samassa ketjussa).
+    const seenKid = new Set();
+    const kids = [];
+    chain.forEach(pid=>{
+      visibleChildrenOf(pid).forEach(c=>{
+        if(!positioned.has(c.id) && !seenKid.has(c.id)){ seenKid.add(c.id); kids.push(c); }
+      });
+    });
     if(!kids.length) return;
-    const totalW = kids.reduce((s,c)=>s+descendantWidth(c.id),0);
-    let cursor = anchorCenter - totalW*sibUnit/2;
-    kids.forEach(c=>{
-      const w = descendantWidth(c.id);
+    // Lapset järjestetään sen mukaan, MISSÄ KOHTAA heidän (jo sijoitetut) vanhempansa
+    // ovat - ketjun jäsenet on jo sijoitettu tässä vaiheessa (ks. positionDescendants,
+    // joka kutsuu tätä funktiota vasta niiden sijoittamisen jälkeen). Näin useamman
+    // liiton lapset asettuvat OMAN vanhempiparinsa puolelle sen sijaan että ne menisivät
+    // sekaisin syntymä-/tuontijärjestyksessä - muuten esim. toisen avioliiton lapsi
+    // saattaisi päätyä ensimmäisen avioliiton lasten "sekaan", jolloin väyläviiva
+    // jouduttaisiin vetämään turhan pitkälle ja se risteäisi muiden liittojen
+    // viivojen kanssa (juuri tästä käyttäjä raportoi puun näyttävän sekavalta usean
+    // puolison tapauksessa). Lapset joiden vanhempaa ei näytetä/tunneta asettuvat
+    // neutraalisti koko lohkon keskikohtaan.
+    const sortKeyOf = c=>{
+      const parentsInBlock = (c.parentIds||[]).filter(pid=>pid in sibPos);
+      if(parentsInBlock.length) return parentsInBlock.reduce((s,pid)=>s+sibPos[pid],0)/parentsInBlock.length;
+      return anchorCenter;
+    };
+    const orderedKids = kids.slice().sort((a,b)=>sortKeyOf(a)-sortKeyOf(b));
+    const widths = orderedKids.map(c=>descendantWidth(c.id));
+    const totalW = widths.reduce((a,b)=>a+b,0);
+    // Koko lapsijoukko keskitetään sen OMAAN, vanhempiensa sijainteihin perustuvaan
+    // painotettuun keskikohtaan ('naturalCenter') - EI anchorCenter-parametrin (koko
+    // ketjun keskikohdan) mukaan. Jos ketjussa on esim. yksi lapseton puoliso ja yksi
+    // liitto jossa on lapsia, lapset keskittyvät oman liittonsa vanhempien kohdalle
+    // sen sijaan että väyläviiva venyisi koko ketjun ylitse (myös lapsettoman puolison
+    // laatikon ali) - juuri tämä käyttäjän raportoima "viiva menee sisarusten yli /
+    // väärän puolison kohdalle" -tapaus.
+    let weightedSum = 0;
+    orderedKids.forEach((c,i)=>{ weightedSum += sortKeyOf(c) * widths[i]; });
+    const naturalCenter = totalW>0 ? weightedSum/totalW : anchorCenter;
+    let cursor = naturalCenter - totalW*sibUnit/2;
+    orderedKids.forEach((c,i)=>{
+      const w = widths[i];
       positionDescendants(c.id, cursor + w*sibUnit/2);
       cursor += w*sibUnit;
     });
   }
 
-  // 1) Juuri aina tarkalleen sib=0, puoliso (jos näkyvissä) heti hänen vierelleen,
-  //    lapset keskitetään pariskunnan (tai pelkän juuren) keskikohdan alle.
+  // 1) Juuri aina tarkalleen sib=0, puolisoketju (jos näkyvissä) heti hänen vierelleen,
+  //    lapset keskitetään koko ketjun keskikohdan alle.
   positionDescendants(rootId, 0);
-  // positionDescendants keskittää PARISKUNNAN (juuri+puoliso) ympäri annetun kohdan -
+  // positionDescendants keskittää KOKO KETJUN (juuri+puolisot) ympäri annetun kohdan -
   // jolloin juuri itse voi päätyä hieman sivuun (esim. -87 jos puoliso viedään +87).
-  // Siirretään koko jo sijoitettu joukko (juuri+puoliso+heidän jälkeläisensä) jäykkänä
-  // kokonaisuutena niin että JUURI päätyy tarkalleen sib=0:aan, puolison etäisyyden
-  // juuresta säilyessä silti ennallaan.
+  // Siirretään koko jo sijoitettu joukko (juuri+puolisot+heidän jälkeläisensä) jäykkänä
+  // kokonaisuutena niin että JUURI päätyy tarkalleen sib=0:aan, puolisoiden etäisyyden
+  // juuresta säilyessä silti ennallaan. Sama siirto tehdään myös törmäystarkistuksen
+  // varaustaulukkoon (occupiedByGen), koska sen arvot ovat kopioita samoista, juuri
+  // siirretyistä sib-sijainneista.
   const rootShift = 0 - sibPos[rootId];
   if(rootShift){
     positioned.forEach(id=>{ sibPos[id] += rootShift; });
+    occupiedByGen.forEach(arr=>{ for(let i=0;i<arr.length;i++) arr[i] += rootShift; });
   }
 
   // 2) Juuren omat esivanhemmat: laske ensin koko esivanhempipuun raa'at sib-arvot
@@ -1759,14 +2282,18 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
   const ancestorShift = sibPos[rootId] - ancestorRawX[rootId]*sibUnit;
   Object.keys(ancestorRawX).forEach(id=>{
     if(positioned.has(id)) return; // juuri itse on jo kiinnitetty
-    sibPos[id] = ancestorRawX[id]*sibUnit + ancestorShift;
-    positioned.add(id);
+    const pos = ancestorRawX[id]*sibUnit + ancestorShift;
+    sibPos[id] = pos; positioned.add(id); occupy(gen[id], pos);
   });
 
   // 3) Varasijoittelu lopuille näkyville henkilöille, joita pääalgoritmi ei tavoittanut
   //    (esim. esivanhemman sisarukset "Piilota sisarukset" pois päältä, tai ylimääräiset
   //    kumppanit kun "Piilota muut kumppanit" ei ole päällä). Pyritään sijoittamaan lähelle
-  //    jo tunnettua sukulaista/kumppania samalla rivillä, törmäyksiä välttäen.
+  //    jo tunnettua sukulaista/kumppania samalla rivillä, törmäyksiä välttäen - käyttäen
+  //    samaa nopeaa (O(log n)) vapaan kohdan hakua kuin päälohkojen sijoittelussakin,
+  //    ei jokaisella sijoituksella koko rivin läpikäyvää skannausta. Ilman tätä
+  //    sisarusrikkaan sukupolven (satoja sisaruksia) varasijoittelu saattoi hidastaa
+  //    puun keskitystä useilla sekunneilla.
   const remaining = ids.filter(id=>!positioned.has(id)).sort((a,b)=>gen[a]-gen[b]);
   remaining.forEach(id=>{
     if(positioned.has(id)) return;
@@ -1775,11 +2302,9 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
     spousesOf(id).forEach(({person:sp})=>{ if(sp && positioned.has(sp.id) && gen[sp.id]===gen[id]) candidates.push(sibPos[sp.id]+sibUnit); });
     (p.parentIds||[]).forEach(pid=>{ if(positioned.has(pid) && gen[pid]===gen[id]-1) candidates.push(sibPos[pid]); });
     visibleChildrenOf(id).forEach(c=>{ if(positioned.has(c.id)) candidates.push(sibPos[c.id]); });
-    let center = candidates.length ? candidates[0] : 0;
-    const rowPositioned = ids.filter(other=>gen[other]===gen[id] && positioned.has(other));
-    let tries = 0;
-    while(rowPositioned.some(other=>Math.abs(sibPos[other]-center) < sibUnit*0.9) && tries<300){ center += sibUnit; tries++; }
-    sibPos[id] = center; positioned.add(id);
+    const desired = candidates.length ? candidates[0] : 0;
+    const center = findFreeCenter(gen[id], desired, sibUnit*0.9);
+    sibPos[id] = center; positioned.add(id); occupy(gen[id], center);
     layoutChildrenOf(id, center);
   });
 
@@ -1831,12 +2356,63 @@ function layoutTree(rootId, up, down, orientation, hideSiblings, hideOtherPartne
     return {parentNodes, childNodes};
   }).filter(f=>f.parentNodes.length && f.childNodes.length);
 
+  // Kuinka monessa eri perheessä (vanhempi+vanhempi -parissa) kukin henkilö esiintyy
+  // vanhempana - useampi kuin yksi tarkoittaa useampaa puolisoa/liittoa. Tätä käytetään
+  // tunnistamaan, KUMPI kahdesta vanhemmasta on se, jolla on MUITAKIN puolisoita (ks.
+  // alla oleva ei-vierekkäisten vanhempien erikoistapaus).
+  const familyCountOf = {};
+  Object.values(families).forEach(fam=>{
+    fam.parentIds.forEach(pid=>{ familyCountOf[pid] = (familyCountOf[pid]||0)+1; });
+  });
+  // Ovatko kaksi saman sukupolven solmua sijoitettu AIDOSTI vierekkäin (ei ketään
+  // kolmatta niiden välissä)? positionDescendants asettaa henkilön aina suoraan kiinni
+  // KAHTEEN lähimpään puolisoonsa, mutta 3+ puolison tapauksessa kauempana olevat
+  // eivät ole vierekkäin - silloin perheen yhdysviivan paikkaa EI voi laskea kahden
+  // vanhemman sijaintien keskiarvona, koska keskiarvo osuisi välissä olevan kolmannen
+  // henkilön laatikon kohdalle.
+  // Suorituskyvyn vuoksi (isoilla sukupuilla tuhansia perheitä/solmuja) jokaisen
+  // sukupolven sib-sijainnit esilajitellaan KERRAN, jolloin yksittäinen tarkistus on
+  // O(log n) täydellisen O(n):n sijaan per perhe.
+  const sibsByGen = new Map(); // genVal -> lajiteltu taulukko sib-sijainneista
+  ids.forEach(nid=>{
+    const g = gen[nid];
+    let arr = sibsByGen.get(g);
+    if(!arr){ arr = []; sibsByGen.set(g, arr); }
+    arr.push(sibPos[nid] || 0);
+  });
+  sibsByGen.forEach(arr=>arr.sort((a,b)=>a-b));
+  function isAdjacentPair(n1, n2){
+    const s1 = sibOf(n1), s2 = sibOf(n2);
+    const lo = Math.min(s1,s2), hi = Math.max(s1,s2);
+    const arr = sibsByGen.get(gen[n1.id]) || [];
+    let left = 0, right = arr.length;
+    while(left < right){
+      const mid = (left+right) >> 1;
+      if(arr[mid] <= lo + 1) left = mid + 1; else right = mid;
+    }
+    return !(left < arr.length && arr[left] < hi - 1);
+  }
+
   const transitions = {};
   familyEntries.forEach(f=>{
     let trunkGen, trunkSib;
     if(f.parentNodes.length >= 2){
-      trunkGen = genOf(f.parentNodes[0]) + genSize/2;
-      trunkSib = f.parentNodes.reduce((sum,n)=>sum + sibOf(n) + sibSize/2, 0) / f.parentNodes.length;
+      const [p1,p2] = f.parentNodes;
+      if(f.parentNodes.length===2 && !isAdjacentPair(p1,p2)){
+        // Ei-vierekkäiset vanhemmat (harvinainen 3+ puolison tapaus): rungon paikaksi
+        // valitaan sen vanhemman kohta, jolla EI ole muita näkyviä perheitä ("hub" on
+        // se vanhempi, jolla niitä on useita) - näin viiva ei koskaan kulje minkään
+        // toisen puolison laatikon läpi, vaikka se ei tässä harvinaisessa tapauksessa
+        // näytäkään täysin "yhteiseltä" molempien vanhempien kesken.
+        const p1IsHub = (familyCountOf[p1.id]||0) > (familyCountOf[p2.id]||0);
+        const p2IsHub = (familyCountOf[p2.id]||0) > (familyCountOf[p1.id]||0);
+        const chosen = p1IsHub ? p2 : (p2IsHub ? p1 : p2);
+        trunkGen = genOf(chosen) + genSize/2;
+        trunkSib = sibOf(chosen) + sibSize/2;
+      } else {
+        trunkGen = genOf(f.parentNodes[0]) + genSize/2;
+        trunkSib = f.parentNodes.reduce((sum,n)=>sum + sibOf(n) + sibSize/2, 0) / f.parentNodes.length;
+      }
     } else {
       trunkGen = genOf(f.parentNodes[0]) + genSize;
       trunkSib = sibOf(f.parentNodes[0]) + sibSize/2;
@@ -2899,6 +3475,7 @@ document.getElementById('btnImportGedcom').addEventListener('click', ()=>{
   document.getElementById('gedcomImportInput').click();
 });
 document.getElementById('btnPrintTree').addEventListener('click', printTree);
+document.getElementById('btnSukukirja').addEventListener('click', generateSukukirja);
 
 const hiddenGedcomInput = document.createElement('input');
 hiddenGedcomInput.type='file'; hiddenGedcomInput.accept='.ged,text/plain'; hiddenGedcomInput.id='gedcomImportInput';
