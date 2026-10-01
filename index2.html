@@ -126,6 +126,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
 <main>
 <aside>
   <h2 id="formTitle">Uusi variantti</h2>
+  <div id="betweenInfo" class="hint" style="display:none;background:#e3ebf6;border:1px solid #b9cbe4;color:var(--ink);padding:7px 9px;border-radius:6px;margin:0 0 6px"></div>
   <form id="form" autocomplete="off">
     <label for="fSnp">SNP-haplon koodi *</label>
     <input type="text" id="fSnp" placeholder="esim. N-L1022" required>
@@ -190,6 +191,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
       <button type="submit" class="btn primary" id="bSubmit">Lisää</button>
       <button type="button" class="btn" id="bNew">Uusi</button>
       <button type="button" class="btn" id="bChild" disabled>Lisää alahaara</button>
+      <button type="button" class="btn" id="bBetween" disabled title="Lisää uusi haplo tämän haplon ja sen isähaplon väliin">Lisää väliin</button>
       <button type="button" class="btn danger" id="bDel" disabled>Poista</button>
     </div>
   </form>
@@ -287,6 +289,7 @@ const PALETTE = ['#c0392b','#e67e22','#d4a017','#6ab04c','#27ae60','#16a085','#0
                  '#1f4e8c','#6c5ce7','#8e44ad','#e84393','#a0522d','#7f8c8d','#2c3e50','#b8651b'];
 let state = { nodes: [], settings: { rootBottom: true, timeScale: false, regions: true, zoom: 100, ownId: null, ownHi: true, edgeLabels: true } };
 let editId = null;
+let insertAboveId = null;   // "Lisää väliin": uusi haplo tulee tämän haplon isähaploksi
 let formColor = PALETTE[8];
 const $ = id => document.getElementById(id);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -392,22 +395,27 @@ function updateAgeHint(){
   const v = $('fAge').value;
   $('ageHint').textContent = v !== '' ? `≈ ${calYear(+v)} (ybp, perusvuosi 1950)` : 'Vuotta ennen nykyhetkeä (ybp, perusvuosi 1950).';
 }
-function clearForm(parentId){
+function clearForm(parentId, aboveId){
   editId = null;
+  insertAboveId = aboveId || null;
+  const ab = byId(insertAboveId), pa = ab ? byId(ab.parentId) : null;
+  $('betweenInfo').style.display = ab ? '' : 'none';
+  $('betweenInfo').innerHTML = ab ? `Lisätään väliin: <b>${esc(pa ? pa.snp : '(juuri)')}</b> → <b>uusi haplo</b> → <b>${esc(ab.snp)}</b>` +
+    `${(pa && pa.age != null) || ab.age != null ? `<br>Iän pitäisi olla ${ab.age != null ? 'yli ' + ab.age.toLocaleString('fi-FI') : ''}${pa && pa.age != null && ab.age != null ? ' ja ' : ''}${pa && pa.age != null ? 'alle ' + pa.age.toLocaleString('fi-FI') : ''} v.` : ''}` : '';
   $('form').reset();
   $('formTitle').textContent = 'Uusi variantti';
   $('bSubmit').textContent = 'Lisää';
-  $('bDel').disabled = true; $('bChild').disabled = true; $('fOwn').checked = false; $('fHideSub').disabled = true; setPhoto(null); syncOwnLabel();
+  $('bDel').disabled = true; $('bChild').disabled = true; $('bBetween').disabled = true; $('fOwn').checked = false; $('fHideSub').disabled = true; setPhoto(null); syncOwnLabel();
   if (parentId){ const p = byId(parentId); if (p) setColor(p.color || formColor); }
   renderParentSelect(parentId);
   updateAgeHint(); renderList(); renderTree();
 }
 function loadForm(id){
   const n = byId(id); if (!n) return;
-  editId = id;
+  editId = id; insertAboveId = null; $('betweenInfo').style.display = 'none';
   $('formTitle').textContent = 'Muokkaa: ' + n.snp;
   $('bSubmit').textContent = 'Tallenna muutokset';
-  $('bDel').disabled = false; $('bChild').disabled = false;
+  $('bDel').disabled = false; $('bChild').disabled = false; $('bBetween').disabled = false;
   $('fSnp').value = n.snp || ''; $('fAlias').value = n.alias || '';
   $('fAge').value = n.age ?? ''; $('fAgeErr').value = n.ageErr ?? '';
   $('fRegion').value = n.region || '';
@@ -437,14 +445,28 @@ $('form').onsubmit = e => {
   const p = byId(data.parentId);
   if (p && p.age != null && data.age != null && data.age > p.age &&
       !confirm(`Ikäarvio (${data.age}) on suurempi kuin isähaplon ${p.snp} (${p.age}). Tallennetaanko silti?`)) return;
+  const below = !editId ? byId(insertAboveId) : null;
+  if (below && below.age != null && data.age != null && data.age < below.age &&
+      !confirm(`Ikäarvio (${data.age}) on pienempi kuin alahaplon ${below.snp} (${below.age}). Tallennetaanko silti?`)) return;
   if (editId) Object.assign(byId(editId), data);
-  else { const n = Object.assign({ id: uid() }, data); state.nodes.push(n); editId = n.id; }
+  else {
+    const n = Object.assign({ id: uid() }, data); state.nodes.push(n); editId = n.id;
+    if (below) below.parentId = n.id;   // alahaplo siirtyy uuden haplon alle
+    insertAboveId = null;
+  }
   if ($('fOwn').checked){ state.settings.ownId = editId; state.settings.ownLabel = $('fOwnLabel').value.trim(); }
   else if (state.settings.ownId === editId) state.settings.ownId = null;
   save(); refresh(); loadForm(editId);
 };
 $('bNew').onclick = () => clearForm(null);
 $('bChild').onclick = () => { const pid = editId; clearForm(pid); $('fSnp').focus(); };
+$('bBetween').onclick = () => {
+  const x = byId(editId); if (!x) return;
+  clearForm(x.parentId || null, x.id);
+  setColor(x.color || formColor);
+  if (x.region) $('fRegion').value = x.region;
+  $('fSnp').focus();
+};
 $('bDel').onclick = () => {
   const n = byId(editId); if (!n) return;
   const k = children(n.id).length;
