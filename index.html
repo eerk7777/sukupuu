@@ -229,6 +229,21 @@
     width:360px;max-width:92vw;padding:18px;
   }
   #modalBox h4{margin-bottom:8px;}
+  #modalBox{max-height:92vh;overflow-y:auto;}
+  #modalBox:has(.pp-wrap){width:680px;}
+  /* Hakukentät: etunimi / sukunimi / syntymävuosi / syntymäpaikka */
+  .search4{display:grid;grid-template-columns:1.2fr 1.2fr .7fr 1.2fr;gap:4px;}
+  .search4 input{width:100%;min-width:0;}
+  #topbar .search4{width:380px;}
+  .pp-results{margin-top:6px;border:1px solid var(--panel-border);border-radius:6px;max-height:260px;overflow-y:auto;font-size:12px;}
+  .pp-row{display:grid;grid-template-columns:1.2fr 1.2fr .7fr 1.2fr;gap:4px;padding:5px 8px;cursor:pointer;border-bottom:1px solid #f0eee9;}
+  .pp-row:hover{background:var(--accent-bg);}
+  .pp-row.sel{background:var(--accent);color:#fff;}
+  .pp-row.pp-head{cursor:default;font-weight:700;background:var(--panel);position:sticky;top:0;color:var(--text-dim);}
+  .pp-row.pp-head:hover{background:var(--panel);}
+  .pp-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .pp-info{font-size:11px;color:var(--text-dim);padding:6px 8px;}
+  .pp-chosen{font-size:12px;margin-top:6px;}
   #modalBox .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
 
   /* Suurennettu tekstikentän muokkausikkuna (esim. Kuvaus / muistiinpanot) */
@@ -295,7 +310,12 @@
   </div>
   <div class="sep"></div>
   <div class="grp">
-    <input id="searchBox" placeholder="Hae henkilöä…" style="width:170px;">
+    <div class="search4" id="searchBox" title="Hae henkilöä: etunimi, sukunimi, syntymävuosi, syntymäpaikka">
+      <input id="sq-etu" placeholder="Etunimi">
+      <input id="sq-suku" placeholder="Sukunimi">
+      <input id="sq-vuosi" placeholder="Synt.v.">
+      <input id="sq-paikka" placeholder="Synt.paikka">
+    </div>
   </div>
   <div class="spacer"></div>
   <div id="fileStatus">Ei tallennettua tiedostoa</div>
@@ -1849,21 +1869,53 @@ async function navigateToChild(personId){
 /* ---------------------------------------------------------------------
    HENKILÖLISTA (sivupalkki)
 --------------------------------------------------------------------- */
+/* Nelikenttähaku: etunimi, sukunimi, syntymävuosi, syntymäpaikka.
+   Kaikki täytetyt ehdot on täytyttävä (AND). Etunimi/sukunimi/paikka: osamerkkijono,
+   isot/pienet kirjaimet ja aksentit ohitetaan. Sukunimi vertaa myös kuollessa-
+   sukunimeen ja patronyymiin. Vuosi: alkuosa (esim. "18" → 1800-luku) tai väli "1850-1870". */
+function normSearch(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+function readSearch4(prefix){
+  const g = id => { const el=document.getElementById(prefix+id); return el ? el.value : ''; };
+  return { etu:normSearch(g('etu')), suku:normSearch(g('suku')), vuosi:g('vuosi').trim(), paikka:normSearch(g('paikka')) };
+}
+function search4Empty(q){ return !q.etu && !q.suku && !q.vuosi && !q.paikka; }
+function personMatches4(p, q){
+  if(q.etu && !normSearch(p.etunimi).includes(q.etu)) return false;
+  if(q.suku){
+    const s = normSearch([p.sukunimi, p.sukunimiKuollessa, p.patronyymi, displaySukunimi(p)].filter(Boolean).join(' | '));
+    if(!s.includes(q.suku)) return false;
+  }
+  if(q.vuosi){
+    const y = yearOf(p.syntAika);
+    const m = q.vuosi.match(/^(\d{1,4})\s*[-–]\s*(\d{1,4})$/);
+    if(m){
+      const yn = parseInt(y,10);
+      if(!(yn>=+m[1] && yn<=+m[2])) return false;
+    } else if(!String(y).startsWith(q.vuosi)) return false;
+  }
+  if(q.paikka && !normSearch(p.syntPaikka).includes(q.paikka)) return false;
+  return true;
+}
+
 function renderPersonList(){
-  const q = (document.getElementById('searchBox').value||'').toLowerCase().trim();
+  const q = readSearch4('sq-');
   const listEl = document.getElementById('personList');
   const sorted = [...state.persons].sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'));
-  const filtered = q ? sorted.filter(p => fullName(p).toLowerCase().includes(q)) : sorted;
+  const filtered = search4Empty(q) ? sorted : sorted.filter(p => personMatches4(p, q));
   listEl.innerHTML = filtered.map(p => `
     <div class="person-row ${p.id===ui.selectedPersonId?'active':''}" data-id="${p.id}">
       <div class="avatar">${p.valokuva ? `<img src="${p.valokuva}">` : escapeHtml(initials(p))}</div>
       <div>
         <div class="pname">${escapeHtml(fullName(p))}</div>
-        <div class="pdates">${escapeHtml(lifeSpan(p))}</div>
+        <div class="pdates">${escapeHtml([lifeSpan(p), p.syntPaikka||''].filter(Boolean).join(' · '))}</div>
       </div>
     </div>
   `).join('') || `<div class="muted" style="padding:14px;">Ei tuloksia.</div>`;
-  document.getElementById('personCount').textContent = state.persons.length + ' henkilöä';
+  document.getElementById('personCount').textContent = search4Empty(q)
+    ? state.persons.length + ' henkilöä'
+    : filtered.length + ' / ' + state.persons.length + ' henkilöä';
 
   listEl.querySelectorAll('.person-row').forEach(row=>{
     row.addEventListener('click', ()=>{
@@ -3163,6 +3215,76 @@ document.getElementById('btnAddSource').addEventListener('click', ()=>{
 });
 
 /* --- Suhteet: vanhemmat / puolisot / lapset --- */
+/* Henkilön valitsin modaaleihin: 4 hakukenttää + tulostaulukko.
+   Valittu id tallentuu piilokenttään (id = hiddenId), joten OK-käsittelijät lukevat
+   sen .value-ominaisuudesta kuten ennenkin. */
+const PP_MAX = 200;
+function personPickerHtml(hiddenId){
+  return `<div class="pp-wrap" data-target="${hiddenId}">
+    <input type="hidden" id="${hiddenId}" value="">
+    <div class="search4">
+      <input class="pp-q" data-k="etu" placeholder="Etunimi">
+      <input class="pp-q" data-k="suku" placeholder="Sukunimi">
+      <input class="pp-q" data-k="vuosi" placeholder="Synt.v.">
+      <input class="pp-q" data-k="paikka" placeholder="Synt.paikka">
+    </div>
+    <div class="pp-results"></div>
+    <div class="pp-chosen muted">Ei valittua henkilöä.</div>
+  </div>`;
+}
+function initPersonPicker(hiddenId, excludeIds){
+  const hidden = document.getElementById(hiddenId);
+  const wrap = hidden.closest('.pp-wrap');
+  const resEl = wrap.querySelector('.pp-results');
+  const chosenEl = wrap.querySelector('.pp-chosen');
+  const inputs = [...wrap.querySelectorAll('.pp-q')];
+  const excl = new Set(excludeIds||[]);
+  const pool = state.persons.filter(p=>!excl.has(p.id))
+    .sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'));
+  function render(){
+    const q = {etu:'',suku:'',vuosi:'',paikka:''};
+    inputs.forEach(i=>{ q[i.dataset.k] = i.dataset.k==='vuosi' ? i.value.trim() : normSearch(i.value); });
+    const head = `<div class="pp-row pp-head"><span>Etunimi</span><span>Sukunimi</span><span>Synt.</span><span>Syntymäpaikka</span></div>`;
+    if(search4Empty(q)){
+      resEl.innerHTML = head + `<div class="pp-info">Kirjoita hakuehto yhteen tai useampaan kenttään (${pool.length} henkilöä).</div>`;
+      return;
+    }
+    const hits = [];
+    let total = 0;
+    for(const p of pool){
+      if(personMatches4(p,q)){ total++; if(hits.length<PP_MAX) hits.push(p); }
+    }
+    resEl.innerHTML = head + (hits.length ? hits.map(p=>`
+      <div class="pp-row ${p.id===hidden.value?'sel':''}" data-id="${p.id}" title="${escapeHtml(fullName(p)+' '+lifeSpan(p))}">
+        <span>${escapeHtml(p.etunimi||'')}</span>
+        <span>${escapeHtml(displaySukunimi(p))}</span>
+        <span>${escapeHtml(lifeSpan(p))}</span>
+        <span>${escapeHtml(p.syntPaikka||'')}</span>
+      </div>`).join('') : `<div class="pp-info">Ei tuloksia.</div>`)
+      + (total>PP_MAX ? `<div class="pp-info">Näytetään ${PP_MAX} / ${total} osumaa – tarkenna hakua.</div>` : '');
+    resEl.querySelectorAll('.pp-row[data-id]').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        hidden.value = row.dataset.id;
+        resEl.querySelectorAll('.pp-row.sel').forEach(r=>r.classList.remove('sel'));
+        row.classList.add('sel');
+        const p = personById(row.dataset.id);
+        chosenEl.classList.remove('muted');
+        chosenEl.innerHTML = 'Valittu: <strong>'+escapeHtml(fullName(p))+'</strong> '+escapeHtml([lifeSpan(p), p.syntPaikka||''].filter(Boolean).join(', '))
+          + ' <button type="button" class="small-btn pp-clear" style="margin-left:6px;">Poista valinta</button>';
+        chosenEl.querySelector('.pp-clear').onclick = ()=>{
+          hidden.value=''; chosenEl.classList.add('muted'); chosenEl.textContent='Ei valittua henkilöä.';
+          resEl.querySelectorAll('.pp-row.sel').forEach(r=>r.classList.remove('sel'));
+        };
+      });
+      row.addEventListener('dblclick', ()=>{ document.getElementById('modalOk').click(); });
+    });
+  }
+  let t=null;
+  inputs.forEach(i=>i.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(render,120); }));
+  render();
+  setTimeout(()=>inputs[0].focus(), 30);
+}
+
 function personPickerOptions(excludeIds){
   return state.persons.filter(p=>!excludeIds.includes(p.id))
     .sort((a,b)=>fullName(a).localeCompare(fullName(b),'fi'))
@@ -3274,7 +3396,7 @@ document.getElementById('btnAddParent').addEventListener('click', ()=>{
   const existingIds = [d.id, ...(person.parentIds||[])];
   showModal('Lisää vanhempi', `
     <label>Valitse olemassa oleva henkilö</label>
-    <select id="m-parent-existing"><option value="">— valitse —</option>${personPickerOptions(existingIds)}</select>
+    ${personPickerHtml('m-parent-existing')}
     <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
     <label>Uuden vanhemman nimi</label><input id="m-parent-new" placeholder="Etunimi Sukunimi">
   `, ()=>{
@@ -3296,6 +3418,7 @@ document.getElementById('btnAddParent').addEventListener('click', ()=>{
     if(ui.draft.id===d.id) ui.draft.parentIds = person.parentIds;
     autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
   });
+  initPersonPicker('m-parent-existing', existingIds);
 });
 
 document.getElementById('btnAddChild').addEventListener('click', ()=>{
@@ -3307,7 +3430,7 @@ document.getElementById('btnAddChild').addEventListener('click', ()=>{
   ).join('');
   showModal('Lisää lapsi', `
     <label>Valitse olemassa oleva lapsi</label>
-    <select id="m-child-existing"><option value="">— valitse —</option>${personPickerOptions([d.id])}</select>
+    ${personPickerHtml('m-child-existing')}
     <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
     <label>Uuden lapsen nimi</label><input id="m-child-new" placeholder="Etunimi Sukunimi">
 
@@ -3354,13 +3477,14 @@ document.getElementById('btnAddChild').addEventListener('click', ()=>{
 
     autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
   });
+  initPersonPicker('m-child-existing', [d.id]);
 });
 
 document.getElementById('btnAddSpouse').addEventListener('click', ()=>{
   const d = ui.draft;
   showModal('Lisää puoliso / kumppani', `
     <label>Valitse olemassa oleva henkilö</label>
-    <select id="m-sp-existing"><option value="">— valitse —</option>${personPickerOptions([d.id])}</select>
+    ${personPickerHtml('m-sp-existing')}
     <div class="muted" style="margin:8px 0;">tai luo uusi:</div>
     <label>Uuden henkilön nimi</label><input id="m-sp-new" placeholder="Etunimi Sukunimi">
     <label>Suhteen tyyppi</label>
@@ -3396,6 +3520,7 @@ document.getElementById('btnAddSpouse').addEventListener('click', ()=>{
     });
     autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
   });
+  initPersonPicker('m-sp-existing', [d.id]);
 });
 
 /* ---------------------------------------------------------------------
@@ -3433,7 +3558,12 @@ document.getElementById('btnCenterOnPerson').addEventListener('click', ()=>{
 document.getElementById('btnNewPerson').addEventListener('click', openEditorForNew);
 document.getElementById('btnEmptyAdd').addEventListener('click', openEditorForNew);
 
-document.getElementById('searchBox').addEventListener('input', renderPersonList);
+(function(){
+  let t=null;
+  ['sq-etu','sq-suku','sq-vuosi','sq-paikka'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(renderPersonList, 150); });
+  });
+})();
 
 document.getElementById('rootSelect').addEventListener('change', (e)=>{ ui.rootId = e.target.value; renderTree(); fitToView(); });
 document.getElementById('orientSelect').addEventListener('change', (e)=>{ ui.orientation = e.target.value; renderTree(); fitToView(); });
