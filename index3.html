@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sukukirja-muunnin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#ede6d6;
+    --surface:#f8f4ea;
+    --surface-2:#f1ead9;
+    --ink:#241f1a;
+    --ink-soft:#5c5348;
+    --ink-faint:#8b8071;
+    --rule:#d2c6ab;
+    --rule-strong:#b8a880;
+    --accent:#8a2f22;
+    --accent-strong:#6e2419;
+    --accent-ink:#fbf3ea;
+    --ok:#3f6b4c;
+    --ok-bg:#e2ead9;
+    --warn:#8a5a1b;
+    --warn-bg:#f2e3c8;
+    --shadow: 0 1px 0 rgba(36,31,26,.05), 0 8px 24px -12px rgba(36,31,26,.25);
+    --focus: #2f5f8a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#17130f;
+      --surface:#201a13;
+      --surface-2:#251e16;
+      --ink:#ede3ce;
+      --ink-soft:#b8ab92;
+      --ink-faint:#8c8272;
+      --rule:#3a3022;
+      --rule-strong:#4d4128;
+      --accent:#e2825f;
+      --accent-strong:#f0a184;
+      --accent-ink:#1c130d;
+      --ok:#8bc099;
+      --ok-bg:#243527;
+      --warn:#e2b96e;
+      --warn-bg:#3a2f18;
+      --shadow: 0 1px 0 rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.6);
+      --focus:#7fb1e0;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#17130f;
+    --surface:#201a13;
+    --surface-2:#251e16;
+    --ink:#ede3ce;
+    --ink-soft:#b8ab92;
+    --ink-faint:#8c8272;
+    --rule:#3a3022;
+    --rule-strong:#4d4128;
+    --accent:#e2825f;
+    --accent-strong:#f0a184;
+    --accent-ink:#1c130d;
+    --ok:#8bc099;
+    --ok-bg:#243527;
+    --warn:#e2b96e;
+    --warn-bg:#3a2f18;
+    --shadow: 0 1px 0 rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.6);
+    --focus:#7fb1e0;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--accent); color:var(--accent-ink); }
+  a{ color:var(--accent); }
+  h1,h2,h3{ font-family:'Spectral', Georgia, 'Times New Roman', serif; text-wrap:balance; margin:0; }
+
+  .wrap{
+    max-width:760px;
+    margin:0 auto;
+    padding:48px 24px 96px;
+  }
+
+  header.masthead{
+    border-bottom:2px solid var(--ink);
+    padding-bottom:22px;
+    margin-bottom:36px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', ui-monospace, monospace;
+    font-size:11.5px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--accent);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .eyebrow .rule{ flex:1; height:1px; background:var(--rule-strong); }
+  header.masthead h1{ font-size:32px; font-weight:700; letter-spacing:-.01em; }
+  header.masthead p.lead{
+    margin:12px 0 0;
+    color:var(--ink-soft);
+    font-size:15px;
+    max-width:58ch;
+  }
+  header.masthead p.lead code{ font-size:13px; }
+
+  code, .mono{ font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  section.card{
+    background:var(--surface);
+    border:1px solid var(--rule);
+    border-radius:3px;
+    box-shadow:var(--shadow);
+    padding:28px;
+    margin-bottom:24px;
+    position:relative;
+  }
+  section.card::before{
+    content:"";
+    position:absolute; left:0; top:14px; bottom:14px; width:3px;
+    background:var(--rule-strong);
+    border-radius:0 2px 2px 0;
+  }
+  section.card.accented::before{ background:var(--accent); }
+
+  h2.card-title{
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    font-family:'Public Sans', sans-serif;
+    margin-bottom:16px;
+  }
+  h2.card-title .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; margin-right:8px;
+    border-radius:50%;
+    background:var(--ink); color:var(--surface);
+    font-size:11px; font-weight:700;
+  }
+
+  /* Dropzone */
+  .dropzone{
+    border:1.5px dashed var(--rule-strong);
+    border-radius:4px;
+    padding:34px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    background:var(--surface-2);
+  }
+  .dropzone:hover, .dropzone:focus-visible{ border-color:var(--accent); }
+  .dropzone.drag{ border-color:var(--accent); background:var(--ok-bg); }
+  .dropzone .icon{ font-size:28px; margin-bottom:10px; opacity:.85; }
+  .dropzone .primary{ font-size:15px; font-weight:600; }
+  .dropzone .secondary{ font-size:13px; color:var(--ink-faint); margin-top:6px; }
+  .dropzone input[type=file]{ display:none; }
+
+  .file-chip{
+    display:flex; align-items:center; gap:12px;
+    background:var(--surface-2);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    padding:12px 14px;
+    margin-top:16px;
+    font-size:13.5px;
+  }
+  .file-chip .name{ font-weight:600; word-break:break-all; }
+  .file-chip .size{ color:var(--ink-faint); font-family:'IBM Plex Mono',monospace; font-size:12px; white-space:nowrap; }
+  .file-chip .clear{
+    margin-left:auto; background:none; border:none; color:var(--ink-faint);
+    cursor:pointer; font-size:16px; line-height:1; padding:4px;
+  }
+  .file-chip .clear:hover{ color:var(--accent); }
+
+  button.primary-btn{
+    font-family:'Public Sans', sans-serif;
+    font-weight:700;
+    font-size:14.5px;
+    letter-spacing:.01em;
+    color:var(--accent-ink);
+    background:var(--accent);
+    border:none;
+    border-radius:3px;
+    padding:13px 22px;
+    cursor:pointer;
+    margin-top:18px;
+    width:100%;
+    transition:background .15s ease, transform .05s ease;
+  }
+  button.primary-btn:hover:not(:disabled){ background:var(--accent-strong); }
+  button.primary-btn:active:not(:disabled){ transform:translateY(1px); }
+  button.primary-btn:disabled{ opacity:.5; cursor:not-allowed; }
+  button.primary-btn:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+
+  .status-line{
+    display:flex; align-items:center; gap:10px;
+    margin-top:14px;
+    font-size:13.5px;
+    color:var(--ink-soft);
+    min-height:20px;
+  }
+  .spinner{
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid var(--rule-strong);
+    border-top-color:var(--accent);
+    animation:spin .7s linear infinite;
+    flex:none;
+  }
+  @media (prefers-reduced-motion: reduce){ .spinner{ animation-duration:2.2s; } }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    padding:3px 9px; border-radius:100px;
+  }
+  .pill.ok{ background:var(--ok-bg); color:var(--ok); }
+  .pill.warn{ background:var(--warn-bg); color:var(--warn); }
+
+  /* Stat tiles */
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--rule);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    overflow:hidden;
+    margin-bottom:18px;
+  }
+  .stat{
+    background:var(--surface);
+    padding:16px 14px;
+    text-align:center;
+  }
+  .stat .n{
+    font-family:'IBM Plex Mono', monospace;
+    font-variant-numeric:tabular-nums;
+    font-size:26px;
+    font-weight:600;
+    color:var(--ink);
+  }
+  .stat .n.warn-num{ color:var(--warn); }
+  .stat .label{
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-faint); margin-top:4px;
+  }
+
+  .download-btn{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    width:100%;
+    font-family:'Public Sans', sans-serif;
+    font-weight:700; font-size:15px;
+    color:var(--accent-ink);
+    background:var(--accent);
+    border:none; border-radius:3px;
+    padding:15px 20px;
+    cursor:pointer;
+    margin-bottom:6px;
+  }
+  .download-btn:hover{ background:var(--accent-strong); }
+  .download-btn .seal{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%;
+    border:1.5px solid var(--accent-ink);
+    font-size:12px;
+  }
+  .filename-hint{ text-align:center; font-size:12px; color:var(--ink-faint); margin-bottom:4px; }
+
+  details.disclosure{
+    border-top:1px solid var(--rule);
+    margin-top:20px;
+    padding-top:16px;
+  }
+  details.disclosure summary{
+    cursor:pointer;
+    font-size:13px; font-weight:600;
+    color:var(--ink-soft);
+    list-style:none;
+    display:flex; align-items:center; gap:8px;
+  }
+  details.disclosure summary::before{ content:"▸"; font-size:11px; color:var(--ink-faint); }
+  details.disclosure[open] summary::before{ content:"▾"; }
+  details.disclosure summary::-webkit-details-marker{ display:none; }
+
+  .warn-list{
+    margin:12px 0 0; padding:0; list-style:none;
+    max-height:220px; overflow-y:auto;
+    border:1px solid var(--rule); border-radius:3px;
+  }
+  .warn-list li{
+    padding:9px 12px;
+    font-size:12.5px;
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--ink-soft);
+    border-bottom:1px solid var(--rule);
+  }
+  .warn-list li:last-child{ border-bottom:none; }
+  .warn-list li:nth-child(odd){ background:var(--surface-2); }
+
+  pre.preview{
+    margin:12px 0 0;
+    padding:16px;
+    background:var(--surface-2);
+    border:1px solid var(--rule);
+    border-radius:3px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    line-height:1.6;
+    color:var(--ink-soft);
+    overflow-x:auto;
+    white-space:pre;
+    max-height:340px;
+    overflow-y:auto;
+  }
+  pre.preview .tag0{ color:var(--accent); font-weight:600; }
+  pre.preview .tag1{ color:var(--ink); }
+
+  /* Reference / explanation card */
+  .glossary{
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:6px 16px;
+    font-size:13.5px;
+  }
+  .glossary dt{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight:600;
+    color:var(--accent);
+    white-space:nowrap;
+  }
+  .glossary dd{ margin:0; color:var(--ink-soft); }
+
+  p.note-text{ font-size:13.5px; color:var(--ink-soft); margin:0 0 12px; }
+  p.note-text:last-child{ margin-bottom:0; }
+
+  footer.colophon{
+    text-align:center;
+    font-size:12px;
+    color:var(--ink-faint);
+    margin-top:40px;
+  }
+
+  [hidden]{ display:none !important; }
+
+  @media (max-width:520px){
+    .stats{ grid-template-columns:1fr 1fr; }
+    .stat:last-child{ grid-column:1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Sukukirja<span class="rule"></span>GEDCOM</div>
+    <h1>Sukukirja-muunnin</h1>
+    <p class="lead">
+      Muuntaa suvun HTML-muotoisen <strong>sukukirjan</strong> (Taulu&nbsp;1, Taulu&nbsp;2&nbsp;…&nbsp;-rakenne, kuten
+      esim. Genoa- tai Suku-ohjelmien tulosteet) GEDCOM 5.5.1 -tiedostoksi, jonka voi tuoda mihin tahansa
+      sukututkimusohjelmaan. Kaikki tapahtuu selaimessasi &ndash; tiedosto ei lähde mihinkään.
+    </p>
+  </header>
+
+  <section class="card accented">
+    <h2 class="card-title"><span class="num">1</span>Valitse sukukirja</h2>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Valitse tai pudota sukukirjan .htm-tiedosto">
+      <div class="icon">🌳</div>
+      <div class="primary">Pudota .htm-tiedosto tähän, tai napauta valitaksesi</div>
+      <div class="secondary">Sukukirjan HTML-vienti (esim. sukukirja2024_w.htm)</div>
+      <input type="file" id="fileInput" accept=".htm,.html,text/html">
+    </div>
+
+    <div class="file-chip" id="fileChip" hidden>
+      <span class="name" id="fileName"></span>
+      <span class="size" id="fileSize"></span>
+      <button class="clear" id="clearFile" aria-label="Poista tiedosto" title="Poista tiedosto">✕</button>
+    </div>
+
+    <button class="primary-btn" id="convertBtn" disabled>Muunna GEDCOM-tiedostoksi</button>
+
+    <div class="status-line" id="statusLine" hidden></div>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2 class="card-title"><span class="num">2</span>Tulos</h2>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="statIndi">0</div><div class="label">Henkilöä</div></div>
+      <div class="stat"><div class="n" id="statFam">0</div><div class="label">Perhettä</div></div>
+      <div class="stat"><div class="n" id="statWarn">0</div><div class="label">Huomautusta</div></div>
+    </div>
+
+    <button class="download-btn" id="downloadBtn">
+      <span class="seal">⛨</span>
+      <span id="downloadLabel">Lataa .ged-tiedosto</span>
+    </button>
+    <div class="filename-hint" id="filenameHint"></div>
+
+    <details class="disclosure" id="warnDisclosure" hidden>
+      <summary>Näytä huomautukset</summary>
+      <ul class="warn-list" id="warnList"></ul>
+    </details>
+
+    <details class="disclosure">
+      <summary>Esikatsele GEDCOM-sisältöä</summary>
+      <pre class="preview" id="gedcomPreview"></pre>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Mitä muunnin tunnistaa</h2>
+    <p class="note-text">
+      Muunnin lukee kirjan omalla &ldquo;Taulu&nbsp;N&rdquo;-rakenteellaan: jokainen taulu on yksi henkilö puolisoineen
+      ja lapsineen. Ristiviittaukset (<code class="mono">Tauluun&nbsp;N</code>, <code class="mono">Taulusta&nbsp;N</code>)
+      yhdistetään samaksi henkilöksi vain, kun nimi täsmää kohdetaulussa &ndash; näin esim. vävyn oma taulu ei sekoitu
+      appiukon tietoihin.
+    </p>
+    <dl class="glossary">
+      <dt>Taulu N</dt><dd>yksi henkilö puolisoineen ja lapsineen &rarr; henkilö(t) + perhe GEDCOMissa</dd>
+      <dt>Puoliso</dt><dd>avioitumispäivä/-paikka &rarr; <code class="mono">MARR</code>, eronneet-maininta &rarr; <code class="mono">DIV</code></dd>
+      <dt>Lapset</dt><dd>&rarr; <code class="mono">CHIL</code>-viittaukset perheeseen</dd>
+      <dt>e. Sukunimi</dt><dd>entinen (synnyinnimi) &rarr; toinen <code class="mono">NAME</code>-tietue, <code class="mono">TYPE maiden</code></dd>
+      <dt>Vanhemmat:</dt><dd>säilytetään vapaamuotoisena <code class="mono">NOTE</code>-kenttänä</dd>
+      <dt>s. / k.</dt><dd>syntymä-/kuolinpäivä ja -paikka &rarr; <code class="mono">BIRT</code> / <code class="mono">DEAT</code></dd>
+    </dl>
+    <p class="note-text" style="margin-top:14px">
+      Sukupuoli pääteltävissä patronyymistä (<code class="mono">-np.</code> = poika, <code class="mono">-nt.</code> = tytär);
+      muutoin arvataan yleisimmistä suomalaisista etunimistä, ja jää tuntemattomaksi (<code class="mono">SEX U</code>),
+      jos nimeä ei tunnisteta. Kaikki alkuperäinen kuvausteksti (ammatti, muutot, tarinat) säilyy henkilön muistiinpanoissa,
+      vaikka päivämääriä ei siitä osattaisi poimia.
+    </p>
+  </section>
+
+  <footer class="colophon">Kaikki muunnos tapahtuu tässä selainikkunassa &ndash; tiedostoa ei lähetetä minnekään.</footer>
+</div>
+
+<script>
+// ============================================================================
+// Sukukirja (Finnish genealogy HTML book) -> GEDCOM converter core
+// ============================================================================
+(function (global) {
+  "use strict";
+
+  var MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+  function decodeEntities(s) {
+    if (!s) return s;
+    return s
+      .replace(/&auml;/gi, "ä").replace(/&Auml;/g, "Ä")
+      .replace(/&ouml;/gi, "ö").replace(/&Ouml;/g, "Ö")
+      .replace(/&aring;/gi, "å").replace(/&Aring;/g, "Å")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(parseInt(d, 10)); })
+      .replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); });
+  }
+
+  function stripTags(s) {
+    if (!s) return "";
+    return decodeEntities(s.replace(/<[^>]*>/g, "")).replace(/\r/g, "");
+  }
+
+  function cleanWhitespace(s) {
+    return s.replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").replace(/^\s+|\s+$/g, "");
+  }
+
+  function stripBoilerplate(s) {
+    return s
+      .replace(/\|\s*Alku\s*/g, "")
+      .replace(/Suku- ja my[öo]hempi nimi-hakemisto\s*\|?/g, "")
+      .replace(/Paluu\s*\|?/g, "")
+      .replace(/<\/?DL>/gi, "")
+      .replace(/<BR>/gi, "\n")
+      .replace(/<\/TD><TD>/gi, " ")
+      .replace(/<\/TR><\/TABLE>/gi, " ")
+      .replace(/<\/?TABLE[^>]*>/gi, " ")
+      .replace(/<\/?TR>/gi, " ")
+      .replace(/<\/?TD[^>]*>/gi, " ");
+  }
+
+  function removeNavJunk(s) {
+    return s
+      .replace(/Suku- ja my[öo]hempi nimi-hakemisto/g, " ")
+      .replace(/\bAlku\b/g, " ")
+      .replace(/\bPaluu\b/g, " ")
+      .replace(/\|/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function parseDatePlace(raw) {
+    var out = { date: null, place: null };
+    if (!raw) return out;
+    var t = raw.replace(/^[\s,]+/, "").replace(/[\s,]+$/, "");
+    if (!t) return out;
+    var m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s*(.*)$/);
+    if (m) {
+      var d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = m[3];
+      out.date = (mo >= 1 && mo <= 12) ? (d + " " + MONTHS[mo - 1] + " " + y) : (m[1] + "." + m[2] + "." + y);
+      out.place = m[4].replace(/^[\s,]+/, "").trim() || null;
+      return out;
+    }
+    m = t.match(/^\.(\d{1,2})\.(\d{4})\s*(.*)$/);
+    if (m) {
+      var mo3 = parseInt(m[1], 10);
+      out.date = (mo3 >= 1 && mo3 <= 12) ? (MONTHS[mo3 - 1] + " " + m[2]) : (m[1] + "." + m[2]);
+      out.place = m[3].replace(/^[\s,]+/, "").trim() || null;
+      return out;
+    }
+    m = t.match(/^(\d{1,2})\.(\d{4})\s*(.*)$/);
+    if (m) {
+      var mo2 = parseInt(m[1], 10);
+      out.date = (mo2 >= 1 && mo2 <= 12) ? (MONTHS[mo2 - 1] + " " + m[2]) : (m[1] + "." + m[2]);
+      out.place = m[3].replace(/^[\s,]+/, "").trim() || null;
+      return out;
+    }
+    m = t.match(/^(\d{4})\s*(.*)$/);
+    if (m) {
+      out.date = m[1];
+      out.place = m[2].replace(/^[\s,]+/, "").trim() || null;
+      return out;
+    }
+    out.place = t || null;
+    return out;
+  }
+
+  function extractVitals(text) {
+    var result = { birth: { date: null, place: null }, death: { date: null, place: null }, residual: text };
+    var spans = [];
+    var bm = /\bs\.\s*/.exec(text);
+    if (bm) {
+      var startB = bm.index + bm[0].length;
+      var rest = text.slice(startB);
+      var stop = findStop(rest);
+      result.birth = parseDatePlace(rest.slice(0, stop));
+      spans.push([bm.index, startB + stop]);
+    }
+    var dm = /\bk\.\s*/.exec(text);
+    if (dm) {
+      var startD = dm.index + dm[0].length;
+      var restD = text.slice(startD);
+      var stopD = findStop(restD);
+      result.death = parseDatePlace(restD.slice(0, stopD));
+      spans.push([dm.index, startD + stopD]);
+    }
+    spans.sort(function (a, b) { return b[0] - a[0]; });
+    var residual = text;
+    spans.forEach(function (sp) { residual = residual.slice(0, sp[0]) + residual.slice(sp[1]); });
+    residual = residual.replace(/,\s*,/g, ",").replace(/,\s*\./g, ".").replace(/^[\s,.]+/, "").replace(/[\s,]+$/, "").replace(/\s{2,}/g, " ").trim();
+    result.residual = residual;
+    return result;
+  }
+
+  function findStop(s) {
+    var idxCommaK = s.search(/,\s*k\.(\s|$)/);
+    var idxSentenceEnd = -1;
+    for (var i = 0; i < s.length; i++) {
+      if (s[i] === "." && !/\d/.test(s[i + 1] || "")) { idxSentenceEnd = i; break; }
+    }
+    var candidates = [s.length];
+    if (idxCommaK >= 0) candidates.push(idxCommaK);
+    if (idxSentenceEnd >= 0) candidates.push(idxSentenceEnd);
+    return Math.min.apply(null, candidates);
+  }
+
+  var COMMON_MALE = ("Juho Johannes Johan Kalle Kustaa Kustaanp Erkki Erkinp Antti Antinp Matti Matin Heikki Heikinp "+
+    "Aarne Aatos Aimo Antero Arvo Arvi Eero Eino Elis Erik Esko Eugen Frans Georg Gunnar Gustaf Ilmari Isak "+
+    "Jaakko Jalmari Janne Joel Jorma Juha Jukka Jussi Kaarlo Kalervo Kauko Keijo Kalevi Klaus Konsta Kosti Lauri Leo "+
+    "Martti Mauno Mikko Niilo Olavi Oskari Osmo Otto Paavo Pekka Pentti Reino Risto Seppo Sulo Tapani Tapio Tauno "+
+    "Toivo Uljas Unto Urho Vihtori Viljami Viljo Vilho Väinö Yrjö Aleksanteri Anton Bertel Edvard Emil Eemeli Feliks "+
+    "Frithiof Gabriel Hannes Hemming Herman Ivar Jalo Jooseppi Julius Kustavi Leander Nestor Olli Oskar Rafael Reijo "+
+    "Salomon Samuel Simo Simon Staffan Sven Taisto Teodor Valter Verner Vihtor Viktor Wilhelm").split(" ");
+  var COMMON_FEMALE = ("Maria Anna Liisa Kaarina Helena Johanna Sofia Kristiina Elisabet Margareta Katariina Kaisa "+
+    "Aino Aina Aili Alma Anni Annikki Anneli Elna Elin Elli Elsa Elvi Eeva Fanny Helmi Hilda Hilja Hulda Ida Iida "+
+    "Impi Irja Irma Irmeli Iiris Kyllikki Laina Leena Lempi Liisi Linnea Lyyli Maija Marjatta Martta Meeri Miina "+
+    "Onerva Orvokki Paulina Ranghild Ritva Sanna Saima Selma Senni Siiri Sirkka Tellervo Tuulikki Tyyne Vappu Venla "+
+    "Vieno Viivi Hilma Hillevi Justiina Karoliina Josefina Amanda Aleksandra Emilia Emma Fredrika Gerda Greta Hanna "+
+    "Ingrid Jenny Karin Kirsti Lovisa Lyydia Signe Sylvi Valborg Walborg").split(" ");
+
+  function guessGenderByName(givenName) {
+    if (!givenName) return null;
+    var first = givenName.trim().split(/\s+/)[0].replace(/["'“”()]/g, "");
+    if (!first) return null;
+    if (COMMON_MALE.indexOf(first) >= 0) return "M";
+    if (COMMON_FEMALE.indexOf(first) >= 0) return "F";
+    if (/a$/i.test(first) || /ta$/i.test(first) || /na$/i.test(first) || /ia$/i.test(first)) return "F";
+    return null;
+  }
+
+  function parseNameSpans(spans) {
+    spans = spans.map(function (s) { return cleanWhitespace(stripTags(s)); }).filter(function (s) { return s.length > 0; });
+    var markerIdx = -1;
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].replace(/\s+/g, "") === "e.") { markerIdx = i; break; }
+    }
+    var before, formerSurname = null;
+    if (markerIdx >= 0) {
+      before = spans.slice(0, markerIdx);
+      formerSurname = spans.slice(markerIdx + 1).join(" ").trim() || null;
+    } else {
+      before = spans.slice();
+    }
+    var surname = before.length ? before[before.length - 1] : "";
+    var givenParts = before.slice(0, -1);
+    var gender = null;
+    if (givenParts.length) {
+      var last = givenParts[givenParts.length - 1];
+      var pm = last.match(/^([A-Za-zÀ-ÿ]+)(p|t)\.$/);
+      if (pm) gender = pm[2].toLowerCase() === "p" ? "M" : "F";
+    }
+    var given = givenParts.join(" ").trim();
+    var nick = null;
+    var nickM = given.match(/\(([^)]+)\)/);
+    if (nickM) nick = nickM[1].trim();
+    return { given: given, surname: surname, formerSurname: formerSurname, gender: gender, nick: nick };
+  }
+
+  function extractBoldSpans(text) {
+    var spans = [];
+    var re = /<b>([\s\S]*?)<\/b>/g;
+    var m;
+    while ((m = re.exec(text))) spans.push(m[1]);
+    return spans;
+  }
+
+  function splitMarkers(text) {
+    var markerRe = /<A NAME="Taulu (\d+)">|<TABLE><TR><TD>\s*(?:(\d+)\.\s*)?[Pp]uoliso\s*:|<DT>\s*Lapset\s*:\s*<\/DT>|<DD><TABLE><TR><TD>/g;
+    var markers = [];
+    var m;
+    while ((m = markerRe.exec(text))) {
+      var type;
+      if (/^<A NAME/.test(m[0])) type = "taulu";
+      else if (/puoliso/i.test(m[0])) type = "spouse";
+      else if (/Lapset/i.test(m[0])) type = "lapset";
+      else type = "child";
+      markers.push({ type: type, start: m.index, end: m.index + m[0].length, taulu: m[1], spouseNum: m[2] });
+    }
+    return markers;
+  }
+
+  function parseDocument(html, log) {
+    var idxPos = html.search(/<A NAME="index">/i);
+    var content = idxPos >= 0 ? html.slice(0, idxPos) : html;
+    var markers = splitMarkers(content);
+    var tables = {};
+    var order = [];
+    var curTable = null, curFamily = null;
+
+    for (var i = 0; i < markers.length; i++) {
+      var mk = markers[i];
+      var segEnd = (i + 1 < markers.length) ? markers[i + 1].start : content.length;
+      var seg = content.slice(mk.end, segEnd);
+
+      if (mk.type === "taulu") {
+        curTable = { primaryRaw: seg, families: [] };
+        tables[mk.taulu] = curTable;
+        order.push(mk.taulu);
+        curFamily = null;
+      } else if (mk.type === "spouse") {
+        if (!curTable) { log.push("Puoliso-merkintä ennen Taulu-otsikkoa (kohta " + mk.start + ")"); continue; }
+        curFamily = { spouseSeq: mk.spouseNum || String(curTable.families.length + 1), raw: seg, children: [] };
+        curTable.families.push(curFamily);
+      } else if (mk.type === "lapset") {
+        if (!curFamily && curTable) {
+          curFamily = { spouseSeq: "0", raw: "", children: [], noSpouse: true };
+          curTable.families.push(curFamily);
+        }
+      } else if (mk.type === "child") {
+        if (!curFamily) {
+          if (!curTable) { log.push("Lapsi-merkintä ennen Taulu-otsikkoa (kohta " + mk.start + ")"); continue; }
+          curFamily = { spouseSeq: "0", raw: "", children: [], noSpouse: true };
+          curTable.families.push(curFamily);
+        }
+        curFamily.children.push(seg);
+      }
+    }
+    return { tables: tables, order: order };
+  }
+
+  function parsePrimaryLine(raw) {
+    var taulustaM = raw.match(/\(Taulusta\s+(\d+)\)/);
+    var spans = extractBoldSpans(raw);
+    if (spans.length && /^[IVXLCDM]+\s*$/i.test(spans[0].replace(/&nbsp;/g, " ").trim())) spans = spans.slice(1);
+    var nameInfo = parseNameSpans(spans);
+
+    var afterName = raw;
+    var lastB = raw.lastIndexOf("</b>");
+    if (lastB >= 0) afterName = raw.slice(lastB + 4);
+    afterName = afterName.replace(/,?\s*<I>\s*<A HREF\s*=\s*"#Taulu \d+">\(Taulusta \d+\)<\/A>\s*<\/I>/i, "");
+
+    var vanIdx = afterName.search(/Vanhemmat\s*:/i);
+    var vitalsPart = vanIdx >= 0 ? afterName.slice(0, vanIdx) : afterName;
+    var parentsPart = vanIdx >= 0 ? afterName.slice(vanIdx) : "";
+
+    var vitalsText = cleanWhitespace(removeNavJunk(stripTags(stripBoilerplate(vitalsPart))));
+    var vitals = extractVitals(vitalsText);
+    var noteText = vitals.residual && vitals.residual.length > 1 ? vitals.residual : null;
+    var parentsNote = parentsPart ? cleanWhitespace(removeNavJunk(stripTags(stripBoilerplate(parentsPart)))) : null;
+
+    return { name: nameInfo, parentTable: taulustaM ? taulustaM[1] : null, birth: vitals.birth, death: vitals.death, note: noteText, parentsNote: parentsNote };
+  }
+
+  function parseSpouseBlock(raw) {
+    var linkTables = [];
+    var linkRe2 = /<A HREF\s*=\s*"#Taulu (\d+)">\s*<I>\s*\(Taulu\s+\d+\)\s*<\/I>\s*<\/A>/gi;
+    var lm;
+    while ((lm = linkRe2.exec(raw))) linkTables.push(lm[1]);
+
+    var spans = extractBoldSpans(raw);
+    var nameInfo = parseNameSpans(spans);
+
+    var firstB = raw.indexOf("<b>");
+    var marriagePart = firstB >= 0 ? raw.slice(0, firstB) : "";
+    marriagePart = cleanWhitespace(stripTags(marriagePart).replace(/^[\s:]+/, ""));
+    var divorce = null;
+    var divM = marriagePart.match(/,?\s*eronneet\b\s*(.*)$/i);
+    if (divM) {
+      marriagePart = marriagePart.slice(0, divM.index).trim();
+      divorce = parseDatePlace(divM[1]);
+      if (!divorce.date && !divorce.place) divorce = { date: null, place: null, occurred: true };
+    }
+    var marriage = parseDatePlace(marriagePart);
+
+    var lastB = raw.lastIndexOf("</b>");
+    var afterName = lastB >= 0 ? raw.slice(lastB + 4) : "";
+    afterName = afterName.replace(/<A HREF\s*=\s*"#Taulu \d+">\s*<I>\s*\(Taulu\s+\d+\)\s*<\/I>\s*<\/A>/gi, "");
+
+    var vanIdx = afterName.search(/Vanhemmat\s*:/i);
+    var vitalsPart = vanIdx >= 0 ? afterName.slice(0, vanIdx) : afterName;
+    var parentsPart = vanIdx >= 0 ? afterName.slice(vanIdx) : "";
+
+    var vitalsText = cleanWhitespace(removeNavJunk(stripTags(stripBoilerplate(vitalsPart))));
+    var vitals = extractVitals(vitalsText);
+    var noteText = vitals.residual && vitals.residual.length > 1 ? vitals.residual : null;
+    var parentsNote = parentsPart ? cleanWhitespace(removeNavJunk(stripTags(stripBoilerplate(parentsPart)))) : null;
+
+    return { name: nameInfo, linkTables: linkTables, marriage: marriage, divorce: divorce, birth: vitals.birth, death: vitals.death, note: noteText, parentsNote: parentsNote };
+  }
+
+  function parseChildEntry(raw) {
+    var linkM = raw.match(/<A HREF\s*=\s*"#Taulu (\d+)">\s*<I>\s*Tauluun\s+\d+\s*<\/I>\s*<\/A>/i);
+    var linkTable = linkM ? linkM[1] : null;
+
+    var spans = extractBoldSpans(raw);
+    var given = spans.length ? cleanWhitespace(stripTags(spans[0])) : "";
+    var nick = null;
+    var nickM = given.match(/\(([^)]+)\)/);
+    if (nickM) nick = nickM[1].trim();
+
+    var lastB = raw.lastIndexOf("</b>");
+    var afterName = lastB >= 0 ? raw.slice(lastB + 4) : raw;
+    afterName = afterName.replace(/<A HREF\s*=\s*"#Taulu \d+">\s*<I>\s*Tauluun\s+\d+\s*<\/I>\s*<\/A>/i, "");
+
+    var vitalsText = cleanWhitespace(removeNavJunk(stripTags(stripBoilerplate(afterName))));
+    var vitals = extractVitals(vitalsText);
+    var noteText = vitals.residual && vitals.residual.length > 1 ? vitals.residual : null;
+
+    return { given: given, nick: nick, linkTable: linkTable, birth: vitals.birth, death: vitals.death, note: noteText || null };
+  }
+
+  function gedId(prefix, key) {
+    return "@" + prefix + String(key).replace(/[^A-Za-z0-9_]/g, "_") + "@";
+  }
+
+  function buildModel(html) {
+    var log = [];
+    var parsed = parseDocument(html, log);
+    var tables = parsed.tables;
+    var indiById = {};
+    var famList = [];
+
+    function ensureIndi(key) {
+      if (!indiById[key]) {
+        indiById[key] = { key: key, given: null, surname: null, formerSurname: null, nick: null,
+          gender: null, birth: {date:null, place:null}, death: {date:null, place:null}, notes: [], famc: null, fams: [] };
+      }
+      return indiById[key];
+    }
+
+    function applyPersonData(indi, data, preferName) {
+      if (preferName || !indi.given) {
+        if (data.name) {
+          indi.given = data.name.given || indi.given;
+          indi.surname = data.name.surname || indi.surname;
+          indi.formerSurname = data.name.formerSurname || indi.formerSurname;
+          indi.nick = data.name.nick || indi.nick;
+          if (data.name.gender) indi.gender = data.name.gender;
+        } else if (data.given) {
+          indi.given = data.given || indi.given;
+          indi.nick = data.nick || indi.nick;
+        }
+      }
+      if (data.birth && (data.birth.date || data.birth.place) && !(indi.birth.date || indi.birth.place)) indi.birth = data.birth;
+      if (data.death && (data.death.date || data.death.place) && !(indi.death.date || indi.death.place)) indi.death = data.death;
+      if (data.note) indi.notes.push(data.note);
+      if (data.parentsNote) indi.notes.push(data.parentsNote);
+      if (!indi.gender && data.name && data.name.gender) indi.gender = data.name.gender;
+    }
+
+    parsed.order.forEach(function (tnum) {
+      var t = tables[tnum];
+      var indi = ensureIndi("T" + tnum);
+      var data = parsePrimaryLine(t.primaryRaw);
+      applyPersonData(indi, data, true);
+      t._parsedPrimary = data;
+    });
+
+    parsed.order.forEach(function (tnum) {
+      tables[tnum].families.forEach(function (fam) {
+        if (!fam.noSpouse) fam._parsedSpouse = parseSpouseBlock(fam.raw);
+      });
+    });
+
+    function firstToken(s) { return (s || "").trim().split(/\s+/)[0].toLowerCase(); }
+    function surnameSet(nameInfo) {
+      var out = [];
+      if (nameInfo.surname) out.push(nameInfo.surname.toLowerCase().trim());
+      if (nameInfo.formerSurname) out.push(nameInfo.formerSurname.toLowerCase().trim());
+      return out;
+    }
+    function nameMatches(a, b) {
+      if (!a || !b) return false;
+      var ag = firstToken(a.given), bg = firstToken(b.given);
+      if (!ag || !bg || ag !== bg) return false;
+      var as = surnameSet(a), bs = surnameSet(b);
+      for (var i = 0; i < as.length; i++)
+        for (var j = 0; j < bs.length; j++)
+          if (as[i] && bs[j] && (as[i] === bs[j] || as[i].indexOf(bs[j]) >= 0 || bs[j].indexOf(as[i]) >= 0)) return true;
+      return false;
+    }
+    function resolveTarget(targetTableNum, nameInfo) {
+      var t = tables[targetTableNum];
+      if (!t) return null;
+      if (t._parsedPrimary && nameMatches(t._parsedPrimary.name, nameInfo)) return "T" + targetTableNum;
+      for (var i = 0; i < t.families.length; i++) {
+        var f = t.families[i];
+        if (f._parsedSpouse && nameMatches(f._parsedSpouse.name, nameInfo)) return "S" + targetTableNum + "_" + f.spouseSeq;
+      }
+      return null;
+    }
+
+    parsed.order.forEach(function (tnum) {
+      var t = tables[tnum];
+      var primaryKey = "T" + tnum;
+      var primaryIndi = indiById[primaryKey];
+
+      t.families.forEach(function (fam) {
+        var spouseKey = null, spouseData = null;
+        if (!fam.noSpouse) {
+          spouseData = fam._parsedSpouse;
+          var matched = null, otherLinks = [];
+          (spouseData.linkTables || []).forEach(function (lt) {
+            var r = matched ? null : resolveTarget(lt, spouseData.name);
+            if (r && !matched) matched = r; else otherLinks.push(lt);
+          });
+          if (matched) {
+            spouseKey = matched;
+            ensureIndi(spouseKey);
+            applyPersonData(indiById[spouseKey], spouseData, false);
+          } else {
+            spouseKey = "S" + tnum + "_" + fam.spouseSeq;
+            ensureIndi(spouseKey);
+            applyPersonData(indiById[spouseKey], spouseData, true);
+          }
+          otherLinks.forEach(function (lt) { indiById[spouseKey].notes.push("Ks. myos Taulu " + lt + "."); });
+        }
+
+        var famId = gedId("F", tnum + "_" + fam.spouseSeq);
+        var childKeys = [];
+        fam.children.forEach(function (rawChild, ci) {
+          var cdata = parseChildEntry(rawChild);
+          var ckey;
+          if (cdata.linkTable) {
+            var refName = { given: cdata.given, surname: primaryIndi.surname, formerSurname: null };
+            var resolved = resolveTarget(cdata.linkTable, refName);
+            ckey = resolved || ("T" + cdata.linkTable);
+            ensureIndi(ckey);
+            applyPersonData(indiById[ckey], cdata, false);
+          } else {
+            ckey = "C" + tnum + "_" + fam.spouseSeq + "_" + (ci + 1);
+            ensureIndi(ckey);
+            applyPersonData(indiById[ckey], cdata, true);
+          }
+          if (!indiById[ckey].gender) {
+            var g = guessGenderByName(indiById[ckey].given);
+            if (g) indiById[ckey].gender = g;
+          }
+          indiById[ckey].famc = famId;
+          childKeys.push(ckey);
+        });
+
+        var husbKey = null, wifeKey = null;
+        var pGender = primaryIndi.gender || guessGenderByName(primaryIndi.given);
+        if (spouseKey) {
+          var sIndi = indiById[spouseKey];
+          var sGender = sIndi.gender || guessGenderByName(sIndi.given);
+          if (pGender === "F" || (sGender === "M" && pGender !== "M")) { wifeKey = primaryKey; husbKey = spouseKey; }
+          else { husbKey = primaryKey; wifeKey = spouseKey; }
+        } else {
+          if (pGender === "F") wifeKey = primaryKey; else husbKey = primaryKey;
+        }
+
+        if (husbKey) indiById[husbKey].fams.push(famId);
+        if (wifeKey) indiById[wifeKey].fams.push(famId);
+
+        famList.push({ id: famId, husb: husbKey, wife: wifeKey,
+          marriage: spouseData ? spouseData.marriage : null,
+          divorce: spouseData ? spouseData.divorce : null,
+          children: childKeys });
+      });
+    });
+
+    Object.keys(indiById).forEach(function (k) {
+      var ind = indiById[k];
+      if (!ind.gender) { var g = guessGenderByName(ind.given); if (g) ind.gender = g; }
+    });
+
+    return { indiById: indiById, famList: famList, log: log };
+  }
+
+  function gedcomEscape(s) { return (s || "").replace(/[\r\n]+/g, " ").replace(/@/g, "@@"); }
+
+  function pushLongText(lines, level, tag, text) {
+    text = gedcomEscape(text);
+    var CHUNK = 200;
+    lines.push(level + " " + tag + " " + text.slice(0, CHUNK));
+    var rest = text.slice(CHUNK);
+    while (rest.length) { lines.push((level + 1) + " CONC " + rest.slice(0, CHUNK)); rest = rest.slice(CHUNK); }
+  }
+
+  function writeGedcom(model) {
+    var lines = [];
+    lines.push("0 HEAD");
+    lines.push("1 SOUR sukukirja2gedcom");
+    lines.push("2 NAME Sukukirja-muunnin");
+    lines.push("1 GEDC");
+    lines.push("2 VERS 5.5.1");
+    lines.push("2 FORM LINEAGE-LINKED");
+    lines.push("1 CHAR UTF-8");
+    lines.push("1 LANG Finnish");
+    lines.push("1 SUBM @SUB1@");
+    lines.push("0 @SUB1@ SUBM");
+    lines.push("1 NAME Unknown");
+
+    var indiById = model.indiById;
+    var keys = Object.keys(indiById);
+    keys.sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+
+    keys.forEach(function (k) {
+      var ind = indiById[k];
+      lines.push("0 " + gedId("I", k) + " INDI");
+      var given = ind.given || "", surname = ind.surname || "";
+      var nameLine = (given + (ind.nick ? ' "' + ind.nick + '"' : "")).trim() + " /" + surname + "/";
+      lines.push("1 NAME " + gedcomEscape(nameLine));
+      if (given) lines.push("2 GIVN " + gedcomEscape(given));
+      if (surname) lines.push("2 SURN " + gedcomEscape(surname));
+      if (ind.nick) lines.push("2 NICK " + gedcomEscape(ind.nick));
+      if (ind.formerSurname) {
+        lines.push("1 NAME " + gedcomEscape((given || "") + " /" + ind.formerSurname + "/"));
+        lines.push("2 TYPE maiden");
+        lines.push("2 SURN " + gedcomEscape(ind.formerSurname));
+      }
+      lines.push("1 SEX " + (ind.gender || "U"));
+      if (ind.birth.date || ind.birth.place) {
+        lines.push("1 BIRT");
+        if (ind.birth.date) lines.push("2 DATE " + gedcomEscape(ind.birth.date));
+        if (ind.birth.place) lines.push("2 PLAC " + gedcomEscape(ind.birth.place));
+      }
+      if (ind.death.date || ind.death.place) {
+        lines.push("1 DEAT");
+        if (ind.death.date) lines.push("2 DATE " + gedcomEscape(ind.death.date));
+        if (ind.death.place) lines.push("2 PLAC " + gedcomEscape(ind.death.place));
+      }
+      var seen = {};
+      ind.notes.forEach(function (n) { if (n && !seen[n]) { seen[n] = true; pushLongText(lines, 1, "NOTE", n); } });
+      if (ind.famc) lines.push("1 FAMC " + ind.famc);
+      ind.fams.forEach(function (f) { lines.push("1 FAMS " + f); });
+    });
+
+    model.famList.forEach(function (fam) {
+      lines.push("0 " + fam.id + " FAM");
+      if (fam.husb) lines.push("1 HUSB " + gedId("I", fam.husb));
+      if (fam.wife) lines.push("1 WIFE " + gedId("I", fam.wife));
+      if (fam.marriage && (fam.marriage.date || fam.marriage.place)) {
+        lines.push("1 MARR");
+        if (fam.marriage.date) lines.push("2 DATE " + gedcomEscape(fam.marriage.date));
+        if (fam.marriage.place) lines.push("2 PLAC " + gedcomEscape(fam.marriage.place));
+      }
+      if (fam.divorce && (fam.divorce.date || fam.divorce.place || fam.divorce.occurred)) {
+        lines.push("1 DIV");
+        if (fam.divorce.date) lines.push("2 DATE " + gedcomEscape(fam.divorce.date));
+        if (fam.divorce.place) lines.push("2 PLAC " + gedcomEscape(fam.divorce.place));
+      }
+      fam.children.forEach(function (c) { lines.push("1 CHIL " + gedId("I", c)); });
+    });
+
+    lines.push("0 TRLR");
+    return lines.join("\n") + "\n";
+  }
+
+  function convert(html) {
+    var model = buildModel(html);
+    var gedcom = writeGedcom(model);
+    return { gedcom: gedcom, stats: { individuals: Object.keys(model.indiById).length, families: model.famList.length, warnings: model.log } };
+  }
+
+  global.SukukirjaGedcom = { convert: convert };
+})(window);
+</script>
+
+<script>
+// ============================================================================
+// UI wiring
+// ============================================================================
+(function () {
+  "use strict";
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('fileInput');
+  var fileChip = document.getElementById('fileChip');
+  var fileNameEl = document.getElementById('fileName');
+  var fileSizeEl = document.getElementById('fileSize');
+  var clearFileBtn = document.getElementById('clearFile');
+  var convertBtn = document.getElementById('convertBtn');
+  var statusLine = document.getElementById('statusLine');
+  var resultCard = document.getElementById('resultCard');
+  var statIndi = document.getElementById('statIndi');
+  var statFam = document.getElementById('statFam');
+  var statWarn = document.getElementById('statWarn');
+  var downloadBtn = document.getElementById('downloadBtn');
+  var filenameHint = document.getElementById('filenameHint');
+  var warnDisclosure = document.getElementById('warnDisclosure');
+  var warnList = document.getElementById('warnList');
+  var gedcomPreview = document.getElementById('gedcomPreview');
+
+  var currentFile = null;
+  var currentGedcom = null;
+  var outFileName = 'sukukirja.ged';
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' kt';
+    return (bytes/1024/1024).toFixed(1) + ' Mt';
+  }
+
+  function setFile(file) {
+    currentFile = file;
+    if (!file) {
+      fileChip.hidden = true;
+      convertBtn.disabled = true;
+      return;
+    }
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = fmtSize(file.size);
+    fileChip.hidden = false;
+    convertBtn.disabled = false;
+    outFileName = file.name.replace(/\.[^.]+$/, '') + '.ged';
+    resultCard.hidden = true;
+    statusLine.hidden = true;
+  }
+
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', function () { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  ['dragenter','dragover'].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) { e.preventDefault(); dropzone.classList.add('drag'); });
+  });
+  ['dragleave','drop'].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) { e.preventDefault(); dropzone.classList.remove('drag'); });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  clearFileBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    fileInput.value = '';
+    setFile(null);
+  });
+
+  function setStatus(html, spinning) {
+    statusLine.hidden = false;
+    statusLine.innerHTML = (spinning ? '<span class="spinner"></span>' : '') + '<span>' + html + '</span>';
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderPreview(gedcom) {
+    var lines = gedcom.split('\n').slice(0, 60);
+    var html = lines.map(function (l) {
+      var m = l.match(/^(\d+)\s/);
+      var cls = m && m[1] === '0' ? 'tag0' : 'tag1';
+      return '<span class="' + cls + '">' + escapeHtml(l) + '</span>';
+    }).join('\n');
+    gedcomPreview.innerHTML = html + '\n…';
+  }
+
+  convertBtn.addEventListener('click', function () {
+    if (!currentFile) return;
+    convertBtn.disabled = true;
+    resultCard.hidden = true;
+    setStatus('Luetaan tiedostoa&hellip;', true);
+
+    var reader = new FileReader();
+    reader.onerror = function () {
+      setStatus('Tiedoston lukeminen epäonnistui.', false);
+      convertBtn.disabled = false;
+    };
+    reader.onload = function () {
+      var html = reader.result;
+      // Give the status message a chance to paint before the (synchronous) parse runs.
+      requestAnimationFrame(function () {
+        setTimeout(function () {
+          setStatus('Jäsennetään tauluja ja rakennetaan sukupuita&hellip;', true);
+          setTimeout(function () {
+            try {
+              var t0 = performance.now();
+              var result = window.SukukirjaGedcom.convert(html);
+              var ms = Math.round(performance.now() - t0);
+              currentGedcom = result.gedcom;
+
+              statIndi.textContent = result.stats.individuals.toLocaleString('fi-FI');
+              statFam.textContent = result.stats.families.toLocaleString('fi-FI');
+              statWarn.textContent = result.stats.warnings.length.toLocaleString('fi-FI');
+              statWarn.classList.toggle('warn-num', result.stats.warnings.length > 0);
+
+              if (result.stats.warnings.length) {
+                warnDisclosure.hidden = false;
+                warnList.innerHTML = result.stats.warnings.map(function (w) {
+                  return '<li>' + escapeHtml(w) + '</li>';
+                }).join('');
+              } else {
+                warnDisclosure.hidden = true;
+                warnList.innerHTML = '';
+              }
+
+              renderPreview(result.gedcom);
+              filenameHint.textContent = outFileName + ' · ' + fmtSize(result.gedcom.length);
+              resultCard.hidden = false;
+              setStatus('Valmis (' + ms + ' ms).', false);
+              statusLine.querySelector('span:last-child').innerHTML =
+                '<span class="pill ok">Valmis</span>&nbsp;muunnos kesti ' + ms + ' ms';
+            } catch (err) {
+              setStatus('<span class="pill warn">Virhe</span> Muunnos epäonnistui: ' + escapeHtml(String(err && err.message || err)), false);
+              console.error(err);
+            } finally {
+              convertBtn.disabled = false;
+            }
+          }, 30);
+        }, 30);
+      });
+    };
+    reader.readAsText(currentFile, 'utf-8');
+  });
+
+  // When this page runs inside the claude.ai artifact viewer, a plain <a download> link is
+  // inert (the sandbox never grants that) and the viewer's allowlist for its own save prompt
+  // does not include .ged — so we offer a .txt there instead and ask the person to rename it.
+  // When the page runs as an ordinary local file (or on any normal site), window.claude does
+  // not exist at all, and we go straight to the standard Blob + <a download> approach with the
+  // correct .ged extension, no renaming needed.
+  async function tryClaudeDownload(filename, blob) {
+    if (typeof window.claude === 'undefined' || typeof window.claude.use !== 'function') return false;
+    var downloads;
+    try { downloads = await window.claude.use('downloads'); } catch (e) { return false; }
+    if (!downloads) return false;
+    await downloads.save({ filename: filename, data: blob });
+    return true;
+  }
+
+  downloadBtn.addEventListener('click', function () {
+    if (!currentGedcom) return;
+    var blob = new Blob([currentGedcom], { type: 'text/plain;charset=utf-8' });
+    var txtName = outFileName.replace(/\.ged$/i, '.txt');
+
+    tryClaudeDownload(txtName, blob).then(function (usedClaude) {
+      if (usedClaude) {
+        filenameHint.innerHTML = 'Tallennettu nimellä <strong>' + txtName +
+          '</strong> &ndash; nimeä pääte vielä <strong>.ged</strong>:ksi ennen tuontia sukututkimusohjelmaan.';
+        return;
+      }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = outFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }).catch(function (err) {
+      if (err && err.code === 'declined') return;
+      setStatus('<span class="pill warn">Virhe</span> Lataus epäonnistui: ' + escapeHtml(String(err && err.message || err)), false);
+    });
+  });
+})();
+</script>
+</body>
+</html>
