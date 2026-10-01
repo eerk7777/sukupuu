@@ -26,7 +26,14 @@ header h1{font-size:17px;margin:0 12px 0 0;font-weight:600;letter-spacing:.2px}
 .hbtn{background:#2f3d49;color:#fff;border:0;padding:6px 10px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px}
 .hbtn:hover{background:#3f5161}
 main{flex:1;display:flex;min-height:0}
-aside{width:360px;min-width:300px;background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:14px 16px}
+#splitter{flex:none;width:7px;cursor:col-resize;background:transparent;border-left:1px solid var(--line);margin-left:-1px;position:relative;z-index:5}
+#splitter:hover,#splitter.drag{background:#c9d6e6}
+#splitter::after{content:'';position:absolute;left:2px;top:50%;width:2px;height:36px;margin-top:-18px;border-left:1px dotted #8a96a2;border-right:1px dotted #8a96a2}
+body.resizing{cursor:col-resize;user-select:none}
+.dot.tog{width:13px;height:13px;cursor:pointer;flex:none}
+.dot.tog:hover{box-shadow:0 0 0 2px #1f2a33}
+.dot.tog.off{background:transparent!important;border:2px solid var(--c)}
+aside{flex:none;width:360px;min-width:240px;background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:14px 16px}
 section.view{flex:1;display:none;flex-direction:column;min-width:0;min-height:0}
 section.view.active{display:flex}
 h2{font-size:14px;margin:4px 0 10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
@@ -81,7 +88,8 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
 .printTitle{display:none}
 @media (max-width:760px){
   main{flex-direction:column}
-  aside{width:auto;border-right:0;border-bottom:1px solid var(--line);max-height:48vh}
+  aside{width:auto!important;border-right:0;border-bottom:1px solid var(--line);max-height:48vh}
+  #splitter{display:none}
   section.view{min-height:60vh}
 }
 #printArea{position:fixed;left:-30000px;top:0;width:277mm;background:#fff}
@@ -185,6 +193,8 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
     </div>
     <label class="chk"><input type="checkbox" id="fHide"> Piilota tulosteesta</label>
     <label class="chk sub"><input type="checkbox" id="fHideSub" disabled> …myös kaikki alahaarat (oma isälinja säilyy)</label>
+    <label class="chk"><input type="checkbox" id="fHideAll"> Piilota SNP-haara kaikissa näkymissä</label>
+    <div class="hint" style="margin-left:22px">Haplo ja sen alahaarat poistuvat puusta, kartalta ja tulosteista. Ne jäävät listaan (merkintä ⦸), josta piilotuksen voi perua. Oma isälinja ei piiloudu.</div>
 
     <label for="fNotes">Muistiinpanot</label>
     <textarea id="fNotes" placeholder="Lähteet, testitulokset, kantaisän tiedot…"></textarea>
@@ -201,6 +211,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
   <h2>Variantit (<span id="count">0</span>)</h2>
   <div class="list" id="list"></div>
 </aside>
+<div id="splitter" title="Vedä levennä/kavenna"></div>
 
 <section class="view active" id="view-tree">
   <div class="toolbar">
@@ -407,7 +418,7 @@ function clearForm(parentId, aboveId){
   $('form').reset();
   $('formTitle').textContent = 'Uusi variantti';
   $('bSubmit').textContent = 'Lisää';
-  $('bDel').disabled = true; $('bChild').disabled = true; $('bBetween').disabled = true; $('fOwn').checked = false; $('fHideSub').disabled = true; setPhoto(null); syncOwnLabel();
+  $('bDel').disabled = true; $('bChild').disabled = true; $('bBetween').disabled = true; $('fOwn').checked = false; $('fHideSub').disabled = true; $('fHideAll').checked = false; setPhoto(null); syncOwnLabel();
   if (parentId){ const p = byId(parentId); if (p) setColor(p.color || formColor); }
   renderParentSelect(parentId);
   updateAgeHint(); renderList(); renderTree();
@@ -426,6 +437,7 @@ function loadForm(id){
   $('fOwn').checked = state.settings.ownId === id;
   $('fPerson').value = n.person || ''; setPhoto(n.photo); syncOwnLabel();
   $('fHide').checked = !!n.hide; $('fHideSub').checked = !!n.hideSub; $('fHideSub').disabled = !n.hide;
+  $('fHideAll').checked = !!n.hideAll;
   setColor(n.color || PALETTE[8]);
   renderParentSelect(n.parentId);
   updateAgeHint(); renderList(); renderTree();
@@ -442,7 +454,7 @@ $('form').onsubmit = e => {
     age: num($('fAge').value), ageErr: num($('fAgeErr').value), color: formColor,
     region: $('fRegion').value.trim(), lat: num($('fLat').value), lng: num($('fLng').value),
     notes: $('fNotes').value.trim(), person: $('fPerson').value.trim(), photo: formPhoto,
-    hide: $('fHide').checked, hideSub: $('fHide').checked && $('fHideSub').checked
+    hide: $('fHide').checked, hideSub: $('fHide').checked && $('fHideSub').checked, hideAll: $('fHideAll').checked
   };
   const p = byId(data.parentId);
   if (p && p.age != null && data.age != null && data.age > p.age &&
@@ -501,33 +513,83 @@ $('bClearLoc').onclick = () => { $('fLat').value = ''; $('fLng').value = ''; };
 /* ---------- Lista ---------- */
 function renderList(){
   $('count').textContent = state.nodes.length;
-  const t = sortedTree(), hid = printSet().hidden;
+  const t = sortedTree(), psL = printSet(), hid = psL.hidden, vhid = psL.viewHidden;
   $('list').innerHTML = t.length ? t.map(({n,d}) => `
-    <div class="item${n.id === editId ? ' sel' : ''}" data-id="${n.id}" style="padding-left:${6 + d*14}px;${hid.has(n.id) ? 'opacity:.5' : ''}" title="${esc(n.notes)}${hid.has(n.id) ? ' (piilotettu tulosteesta)' : ''}">
-      <span class="dot" style="background:${esc(n.color)}"></span>
+    <div class="item${n.id === editId ? ' sel' : ''}" data-id="${n.id}" style="padding-left:${6 + d*14}px;${hid.has(n.id) ? 'opacity:.5' : ''}" title="${esc(n.notes)}${vhid.has(n.id) ? ' (piilotettu kaikista näkymistä)' : hid.has(n.id) ? ' (piilotettu tulosteesta)' : ''}">
+      <span class="dot tog${n.hideAll ? ' off' : ''}" data-tog="${n.id}" style="background:${esc(n.color)};--c:${esc(n.color)}" title="${n.hideAll ? 'Näytä haara kaikissa näkymissä' : 'Piilota haara kaikissa näkymissä'}"></span>
       <b>${esc(n.snp)}</b>${n.id === state.settings.ownId ? ' <span style="color:#d4a017" title="Oma haplo">★</span>' : ''}
       ${n.age != null ? `<span class="age">${n.age.toLocaleString('fi-FI')}</span>` : ''}
       ${n.region ? `<span class="reg">${esc(n.region)}</span>` : ''}
       ${n.lat == null ? '' : '<span class="reg" title="Sijainti asetettu">📍</span>'}
-      ${hid.has(n.id) ? '<span class="reg" title="Piilotettu tulosteesta">⊘</span>' : ''}
+      ${vhid.has(n.id) ? '<span class="reg" title="Piilotettu kaikista näkymistä" style="color:#b3261e">⦸</span>' : hid.has(n.id) ? '<span class="reg" title="Piilotettu tulosteesta">⊘</span>' : ''}
     </div>`).join('') : '<div class="hint">Ei variantteja vielä. Lisää juurihaplo (esim. N-M231) tai lataa esimerkkidata.</div>';
 }
-$('list').onclick = e => { const it = e.target.closest('.item'); if (it) loadForm(it.dataset.id); };
+$('list').onclick = e => {
+  const t = e.target.closest('[data-tog]');
+  if (t){   // pallon klikkaus: piilota / näytä haara kaikissa näkymissä
+    e.stopPropagation();
+    const n = byId(t.dataset.tog); if (!n) return;
+    n.hideAll = !n.hideAll;
+    if (editId === n.id) $('fHideAll').checked = n.hideAll;
+    save(); refresh();
+    return;
+  }
+  const it = e.target.closest('.item'); if (it) loadForm(it.dataset.id);
+};
+/* vasemman reunan leveyden säätö vetämällä */
+(function(){
+  const sp = $('splitter'), aside = document.querySelector('aside');
+  const apply = w => { aside.style.width = Math.round(w) + 'px'; };
+  let startX = 0, startW = 0, dragging = false;
+  const move = e => {
+    if (!dragging) return;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX);
+    const w = Math.max(240, Math.min(window.innerWidth * 0.7, startW + x - startX));
+    apply(w);
+    if (map) map.invalidateSize();
+  };
+  const up = () => {
+    if (!dragging) return; dragging = false;
+    sp.classList.remove('drag'); document.body.classList.remove('resizing');
+    state.settings.sidebarW = aside.getBoundingClientRect().width; save();
+    if (map) map.invalidateSize();
+  };
+  const down = e => {
+    dragging = true; startX = (e.touches ? e.touches[0].clientX : e.clientX); startW = aside.getBoundingClientRect().width;
+    sp.classList.add('drag'); document.body.classList.add('resizing'); e.preventDefault();
+  };
+  sp.addEventListener('mousedown', down); sp.addEventListener('touchstart', down, { passive: false });
+  window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, { passive: false });
+  window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+  sp.addEventListener('dblclick', () => { apply(360); state.settings.sidebarW = 360; save(); if (map) map.invalidateSize(); });
+})();
 
 /* ---------- Haplopuu (SVG) ---------- */
 const FONT = 'Segoe UI, Arial, sans-serif';
 /* Tulosteeseen näytettävät haplot: piilotetut pois, alahaarat pois jos "koko haara" (paitsi oma isälinja) */
+/* haplot, jotka on piilotettu kaikista näkymistä (haara + alahaarat, oma isälinja säilyy) */
+function viewHidden(){
+  const ownLine = new Set(state.settings.ownId ? lineage(state.settings.ownId).map(n => n.id) : []);
+  const out = new Set();
+  state.nodes.forEach(n => { if (n.hideAll){ [n.id, ...descendants(n.id)].forEach(d => { if (!ownLine.has(d)) out.add(d); }); } });
+  return out;
+}
+function collapse(hidden){
+  const nodes = state.nodes.filter(n => !hidden.has(n.id));
+  const keep = new Set(nodes.map(n => n.id)), parentOf = {};
+  nodes.forEach(n => { let p = byId(n.parentId); const seen = new Set(); while (p && !keep.has(p.id) && !seen.has(p.id)){ seen.add(p.id); p = byId(p.parentId); } parentOf[n.id] = p && keep.has(p.id) ? p.id : null; });
+  return { nodes, parentOf };
+}
 function printSet(){
   const ownLine = new Set(state.settings.ownId ? lineage(state.settings.ownId).map(n => n.id) : []);
-  const hidden = new Set();
+  const vh = viewHidden();
+  const hidden = new Set(vh);
   state.nodes.forEach(n => {
     if (n.hide) hidden.add(n.id);
     if (n.hide && n.hideSub) descendants(n.id).forEach(d => { if (!ownLine.has(d) || byId(d).hide) hidden.add(d); });
   });
-  const nodes = state.nodes.filter(n => !hidden.has(n.id));
-  const keep = new Set(nodes.map(n => n.id)), parentOf = {};
-  nodes.forEach(n => { let p = byId(n.parentId); const seen = new Set(); while (p && !keep.has(p.id) && !seen.has(p.id)){ seen.add(p.id); p = byId(p.parentId); } parentOf[n.id] = p && keep.has(p.id) ? p.id : null; });
-  return { nodes, parentOf, hidden };
+  const { nodes, parentOf } = collapse(hidden);
+  return { nodes, parentOf, hidden, viewHidden: vh };
 }
 function treeSVG(opts = {}){
   const S = state.settings;
@@ -605,8 +667,9 @@ function treeSVG(opts = {}){
     NS.forEach(n => { if (n.region){ (regs[n.region] ||= []).push(n); } });
     Object.entries(regs).forEach(([r, ns]) => {
       const xs = ns.map(n => pos[n.id].X), ys = ns.map(n => pos[n.id].Y);
-      const x0 = Math.min(...xs) - 28, x1 = Math.max(...ns.map(n => pos[n.id].X + (sideLabel(n) ? rightNeed(n) : 0))) + 30, y0 = Math.min(...ys) - 34, y1 = Math.max(...ys) + 58;
+      let x0 = Math.min(...xs) - 28, x1 = Math.max(...ns.map(n => pos[n.id].X + (sideLabel(n) ? rightNeed(n) : 0))) + 30, y0 = Math.min(...ys) - 34, y1 = Math.max(...ys) + 58;
       const col = ns[0].color || '#888';
+      x1 = Math.max(x1, Math.min(...xs) + 30 + r.length * 7.8 + 12);   // aluenimi mahtuu laatikkoon viivatekstien oikealle puolelle
       g += `<rect x="${x0}" y="${y0}" width="${x1-x0}" height="${y1-y0}" rx="26" fill="${col}" fill-opacity="0.10" stroke="${col}" stroke-opacity="0.35" stroke-dasharray="4 4"/>`;
       g += `<text x="${x1 - 12}" y="${y1 - 9}" text-anchor="end" font-family="${FONT}" font-size="13" font-style="italic" font-weight="600" fill="${col}" stroke="#fbfaf6" stroke-width="4" paint-order="stroke">${esc(r)}</text>`;
     });
@@ -705,8 +768,9 @@ function treeSVG(opts = {}){
   return opts.withSize ? { svg, W, H: HH } : svg;
 }
 function renderTree(){
-  const ps = printSet();
-  const s = treeSVG({ zoom: state.settings.zoom / 100, fade: ps.hidden });
+  const ps = printSet(), vs = collapse(ps.viewHidden);
+  const fade = new Set([...ps.hidden].filter(id => !ps.viewHidden.has(id)));
+  const s = treeSVG({ nodes: vs.nodes, parentOf: vs.parentOf, zoom: state.settings.zoom / 100, fade });
   $('treeWrap').innerHTML = s || '<div class="empty">Puu on tyhjä. Lisää ensimmäinen variantti vasemmalta tai lataa esimerkkidata.</div>';
 }
 $('treeWrap').onclick = e => { const g = e.target.closest('g[data-id]'); if (g) loadForm(g.dataset.id); };
@@ -849,7 +913,7 @@ function drawMap(m, layer, legendEl, o){
 }
 function renderMap(){
   if (!map) return;
-  drawMap(map, mapLayer, mapLegend, { mode: 'all', labels: $('mLabels').checked, endId: $('mEnd').value });
+  drawMap(map, mapLayer, mapLegend, { mode: 'all', labels: $('mLabels').checked, endId: $('mEnd').value, skip: viewHidden() });
 }
 function popupHtml(n){
   return (n.photo ? `<img src="${n.photo}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;float:right;margin-left:8px">` : '') +
@@ -1049,7 +1113,7 @@ $('bPrint').onclick = async () => {
         pmapBase = baseLayers()[bn]; pmapBase._name = bn; pmapBase.addTo(pmap);
       }
       pmap.invalidateSize();
-      const r = drawMap(pmap, pmapLayer, pmapLegend, { mode: 'all', labels: $('mLabels').checked, endId, print: true });
+      const r = drawMap(pmap, pmapLayer, pmapLegend, { mode: 'all', labels: $('mLabels').checked, endId, print: true, skip: ps.viewHidden });
       $('printMapTitle').innerHTML = `Isälinjan taival<small>${r.path.map(n => esc(n.snp)).join(' → ')}</small>`;
       await waitTiles(pmapBase, 5000);
       await new Promise(r => setTimeout(r, 300));
@@ -1161,7 +1225,8 @@ function syncSettings(){
 }
 
 /* ---------- Käynnistys ---------- */
-load(); syncSettings(); showFileName(); buildSwatches(); clearForm(null); refresh();
+load(); syncSettings(); showFileName();
+if (state.settings.sidebarW) document.querySelector('aside').style.width = Math.round(state.settings.sidebarW) + 'px'; buildSwatches(); clearForm(null); refresh();
 </script>
 </body>
 </html>
