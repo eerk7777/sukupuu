@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Y-DNA haplopuu</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#f4f1ea; --panel:#fffdf8; --ink:#1f2a33; --muted:#6b7680; --line:#ddd6c8;
+  --accent:#1f4e8c; --accent-ink:#fff; --warn:#b3261e; --age:#b8651b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,Arial,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--ink);color:#fff;flex-wrap:wrap}
+header h1{font-size:17px;margin:0 12px 0 0;font-weight:600;letter-spacing:.2px}
+.tabs{display:flex;gap:0;border:1px solid #4a5a67;border-radius:8px;overflow:hidden}
+.tab{background:transparent;color:#cfd8df;border:0;padding:7px 16px;cursor:pointer;font:700 14px/1 "Segoe UI",system-ui,Arial,sans-serif;letter-spacing:.5px;min-width:64px}
+.tab+.tab{border-left:1px solid #4a5a67}
+.tab.active{background:#fff;color:var(--ink)}
+.chk{display:flex!important;gap:6px;align-items:center;color:var(--ink)!important;font-size:13px!important;font-weight:500!important;margin:8px 0 0!important}
+.chk.sub{margin-left:22px!important;color:var(--muted)!important}
+.spacer{flex:1}
+.hbtn{background:#2f3d49;color:#fff;border:0;padding:6px 10px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px}
+.hbtn:hover{background:#3f5161}
+main{flex:1;display:flex;min-height:0}
+aside{width:360px;min-width:300px;background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:14px 16px}
+section.view{flex:1;display:none;flex-direction:column;min-width:0;min-height:0}
+section.view.active{display:flex}
+h2{font-size:14px;margin:4px 0 10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 3px}
+input[type=text],input[type=number],select,textarea{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;color:var(--ink)}
+textarea{min-height:52px;resize:vertical}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.hint{font-size:11.5px;color:var(--muted);margin-top:3px}
+.swatches{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.sw{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw.sel{box-shadow:0 0 0 2px var(--ink)}
+input[type=color]{width:34px;height:28px;border:1px solid var(--line);border-radius:6px;padding:1px;background:#fff;cursor:pointer}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer;font:inherit}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--warn);border-color:#e5b9b5}
+.btn:disabled{opacity:.45;cursor:default}
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+hr{border:0;border-top:1px solid var(--line);margin:18px 0 12px}
+.list{font-size:13px}
+.item{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer;white-space:nowrap;overflow:hidden}
+.item:hover{background:#f1ece2}
+.item.sel{background:#e3ebf6}
+.dot{width:11px;height:11px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.15)}
+.item .age{color:var(--age);font-size:12px}
+.item .reg{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.toolbar{display:flex;gap:14px;align-items:center;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;font-size:13px}
+.toolbar label{display:inline-flex;align-items:center;gap:5px;margin:0;font-weight:500;color:var(--ink);font-size:13px}
+.toolbar select{width:auto;min-width:180px}
+#treeWrap{flex:1;overflow:auto;background:#fbfaf6}
+#treeWrap svg{display:block}
+#map{flex:1;min-height:300px}
+.empty{padding:40px;color:var(--muted);text-align:center}
+.legend{background:rgba(255,253,248,.95);padding:8px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:12px;max-width:280px;max-height:60vh;overflow:auto}
+.legend b{font-size:13px}
+.legend ol{margin:6px 0 0;padding-left:0}
+.legend li{margin:2px 0}
+.num-icon{border-radius:50%;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.arrow-icon svg{overflow:visible}
+.leaflet-tooltip.snp-tip{font-weight:600;font-size:12px;padding:2px 6px}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(20,28,35,.55);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
+.modal.open{display:flex}
+.modal .box{background:var(--panel);border-radius:10px;width:min(900px,100%);height:min(640px,100%);display:flex;flex-direction:column;overflow:hidden}
+.modal .top{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.modal .top input{flex:1;min-width:180px}
+#pickMap{flex:1}
+#searchRes{max-height:130px;overflow:auto;font-size:13px;border-bottom:1px solid var(--line)}
+#searchRes div{padding:5px 12px;cursor:pointer}
+#searchRes div:hover{background:#f1ece2}
+.modal .bottom{display:flex;gap:8px;padding:10px;align-items:center;border-top:1px solid var(--line)}
+.modal .bottom .coords{flex:1;font-size:13px;color:var(--muted)}
+.printTitle{display:none}
+@media (max-width:760px){
+  main{flex-direction:column}
+  aside{width:auto;border-right:0;border-bottom:1px solid var(--line);max-height:48vh}
+  section.view{min-height:60vh}
+}
+#printArea{position:fixed;left:-30000px;top:0;width:277mm;background:#fff}
+#printMap{width:277mm;height:172mm}
+.ptitle{font:600 15px/1.3 "Segoe UI",Arial,sans-serif;color:#1f2a33;margin:0 0 2mm;height:8mm;overflow:hidden}
+.ptitle small{font-weight:400;color:#6b7680;margin-left:8px;font-size:11px}
+#printTreeBox svg{width:100%;height:100%;display:block}
+#printTreeBox{overflow:hidden}
+.busy{position:fixed;inset:0;background:rgba(20,28,35,.45);color:#fff;display:none;align-items:center;justify-content:center;z-index:3000;font-size:16px}
+.busy.on{display:flex}
+@page mappg{size:A4 landscape;margin:10mm}
+@media print{
+  header,main,.modal,.busy{display:none!important}
+  html,body{display:block;height:auto;background:#fff}
+  #printArea{position:static;width:auto}
+  .p-tree{page:treepg}
+  .p-tree.brk{break-after:page}
+  .p-map{page:mappg}
+  .leaflet-control-zoom,.leaflet-control-layers{display:none!important}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="tabs">
+    <button class="tab active" data-view="tree" title="SNP-haplopuu">SNP</button>
+    <button class="tab" data-view="map" title="Isälinjan taival kartalla">Map</button>
+  </div>
+  <h1>Y-DNA haplopuu</h1>
+  <div class="spacer"></div>
+  <button class="hbtn" id="bPrint" title="Sivu 1: haplopuu, sivu 2: kartta">Tulosta</button>
+  <button class="hbtn" id="bSvg">Vie SVG</button>
+  <button class="hbtn" id="bPng">Vie PNG</button>
+  <button class="hbtn" id="bTiles" title="Karttapohjan asetukset ja oma API-avain">Karttapohja…</button>
+  <button class="hbtn" id="bSave">Tallenna tiedosto</button>
+  <button class="hbtn" id="bLoad">Avaa tiedosto</button>
+  <button class="hbtn" id="bSample">Esimerkkidata</button>
+  <button class="hbtn" id="bClearAll" title="Aloita uusi, tyhjä haplopuu" style="background:#7a2e28">Tyhjennä</button>
+  <input type="file" id="fileIn" accept=".json,application/json" hidden>
+</header>
+
+<main>
+<aside>
+  <h2 id="formTitle">Uusi variantti</h2>
+  <form id="form" autocomplete="off">
+    <label for="fSnp">SNP-haplon koodi *</label>
+    <input type="text" id="fSnp" placeholder="esim. N-L1022" required>
+
+    <label for="fAlias">Rinnakkaiset SNP:t / nimet</label>
+    <input type="text" id="fAlias" placeholder="esim. L1026 / L392">
+
+    <label for="fParent">Isähaplo (ylempi haara)</label>
+    <select id="fParent"></select>
+
+    <div class="row">
+      <div>
+        <label for="fAge">Ikäarvio (v. sitten)</label>
+        <input type="number" id="fAge" min="0" step="50" placeholder="esim. 4600">
+      </div>
+      <div>
+        <label for="fAgeErr">± vaihteluväli</label>
+        <input type="number" id="fAgeErr" min="0" step="50" placeholder="esim. 500">
+      </div>
+    </div>
+    <div class="hint" id="ageHint">Vuotta ennen nykyhetkeä (ybp, perusvuosi 1950).</div>
+
+    <label>Värikoodi</label>
+    <div class="swatches" id="swatches"></div>
+
+    <label for="fRegion">Maantieteellinen alue</label>
+    <input type="text" id="fRegion" list="regionList" placeholder="esim. Savo, Baltia, Ural">
+    <datalist id="regionList"></datalist>
+
+    <label>Sijainti</label>
+    <div class="row">
+      <input type="number" id="fLat" step="any" placeholder="leveysaste">
+      <input type="number" id="fLng" step="any" placeholder="pituusaste">
+    </div>
+    <div class="actions" style="margin-top:6px">
+      <button type="button" class="btn" id="bPick">Valitse kartalta…</button>
+      <button type="button" class="btn" id="bClearLoc">Tyhjennä</button>
+    </div>
+
+    <label for="fPerson">Henkilö (esim. kantaisä)</label>
+    <input type="text" id="fPerson" placeholder="esim. Matti Erkkilä (1712–1780)">
+    <label>Kuva</label>
+    <div style="display:flex;gap:10px;align-items:center">
+      <img id="photoPrev" alt="" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:1px solid var(--line);display:none">
+      <button type="button" class="btn" id="bPhoto">Lisää kuva…</button>
+      <button type="button" class="btn danger" id="bPhotoDel" style="display:none">Poista kuva</button>
+      <input type="file" id="photoIn" accept="image/*" hidden>
+    </div>
+    <div class="hint">Nimi ja kuva näytetään puussa haplon vieressä. Ilman niitä ulkoasu pysyy ennallaan.</div>
+
+    <label class="chk" style="margin-top:14px!important"><input type="checkbox" id="fOwn"> ★ Tämä on oma haploni (korostetaan puussa ja kartalla)</label>
+    <div class="chk sub" style="display:block!important"><span style="font-size:12px">Merkinnän teksti</span>
+      <input type="text" id="fOwnLabel" placeholder="★ OMA HAPLO" style="margin-top:3px" disabled>
+    </div>
+    <label class="chk"><input type="checkbox" id="fHide"> Piilota tulosteesta</label>
+    <label class="chk sub"><input type="checkbox" id="fHideSub" disabled> …myös kaikki alahaarat (oma isälinja säilyy)</label>
+
+    <label for="fNotes">Muistiinpanot</label>
+    <textarea id="fNotes" placeholder="Lähteet, testitulokset, kantaisän tiedot…"></textarea>
+
+    <div class="actions">
+      <button type="submit" class="btn primary" id="bSubmit">Lisää</button>
+      <button type="button" class="btn" id="bNew">Uusi</button>
+      <button type="button" class="btn" id="bChild" disabled>Lisää alahaara</button>
+      <button type="button" class="btn danger" id="bDel" disabled>Poista</button>
+    </div>
+  </form>
+  <hr>
+  <h2>Variantit (<span id="count">0</span>)</h2>
+  <div class="list" id="list"></div>
+</aside>
+
+<section class="view active" id="view-tree">
+  <div class="toolbar">
+    <label><input type="checkbox" id="oBottom"> Juuri alhaalla</label>
+    <label><input type="checkbox" id="oTime"> Aika-akseli</label>
+    <label><input type="checkbox" id="oRegions"> Alueiden taustat</label>
+    <label><input type="checkbox" id="oOwn"> ★ Korosta oma isälinja</label>
+    <label><input type="checkbox" id="oEdge"> Tekstit viivojen varrella</label>
+    <label>Koko <input type="range" id="oZoom" min="40" max="200" value="100"></label>
+    <span class="hint" style="margin:0">Klikkaa haploa muokataksesi sitä. Haalistetut haplot eivät tulostu.</span>
+  </div>
+  <div id="treeWrap"></div>
+</section>
+
+<section class="view" id="view-map">
+  <div class="toolbar">
+    <label>Korostettu isälinja
+      <select id="mEnd"></select>
+    </label>
+    <span class="hint" style="margin:0">Kartalla näkyvät kaikki haplot, joilla on sijainti. Numerot = askeleet korostetulla isälinjalla.</span>
+    <label><input type="checkbox" id="mLabels" checked> Nimilaput</label>
+  </div>
+  <div id="map"></div>
+</section>
+</main>
+
+<style id="pageStyle">@page treepg{size:A4 portrait;margin:10mm}</style>
+<div id="printArea" aria-hidden="true">
+  <section class="p-tree" id="pTree">
+    <div class="ptitle" id="printTreeTitle"></div>
+    <div id="printTreeBox"></div>
+  </section>
+  <section class="p-map" id="pMap">
+    <div class="ptitle" id="printMapTitle"></div>
+    <div id="printMap"></div>
+  </section>
+</div>
+<div class="busy" id="busy">Valmistellaan tulostetta…</div>
+
+<div class="modal" id="tileModal">
+  <div class="box" style="height:auto;max-height:100%;width:min(620px,100%);overflow:auto">
+    <div style="padding:16px 18px">
+      <h2 style="margin-top:0">Karttapohjan asetukset</h2>
+      <label for="tBase">Oletuskarttapohja</label>
+      <select id="tBase"></select>
+      <div class="hint">Valmiit pohjat (Esri) eivät vaadi tunnuksia. OpenStreetMapin omat palvelimet estävät paikallisesti avatut tiedostot, siksi niitä ei käytetä.</div>
+      <hr>
+      <h2>Oma karttapalvelu (valinnainen)</h2>
+      <div class="hint" style="margin-bottom:6px">Jos sinulla on tunnus esim. MapTileriin tai Thunderforestiin, lisää URL-malli ja API-avain. Kirjoita malliin <b>{key}</b> avaimen paikalle.</div>
+      <div class="actions" style="margin-top:4px">
+        <button type="button" class="btn" data-preset="maptiler">Esitäyttö: MapTiler</button>
+        <button type="button" class="btn" data-preset="thunder">Esitäyttö: Thunderforest</button>
+      </div>
+      <label for="tName">Nimi</label><input type="text" id="tName" placeholder="esim. MapTiler Streets">
+      <label for="tUrl">URL-malli</label><input type="text" id="tUrl" placeholder="https://…/{z}/{x}/{y}.png?key={key}">
+      <label for="tKey">API-avain</label><input type="text" id="tKey" placeholder="liitä avain tähän">
+      <label for="tAttr">Tekijänoikeusteksti</label><input type="text" id="tAttr" placeholder="© palveluntarjoaja, © OpenStreetMap">
+      <div class="hint">Avain tallentuu vain tälle koneelle tämän selaimen muistiin ja Tallenna tiedosto -varmuuskopioon.</div>
+      <div class="actions">
+        <button type="button" class="btn primary" id="tOk">Tallenna</button>
+        <button type="button" class="btn" id="tCancel">Peruuta</button>
+        <button type="button" class="btn danger" id="tClear">Poista oma palvelu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="pickModal">
+  <div class="box">
+    <div class="top">
+      <input type="text" id="searchQ" placeholder="Hae paikkaa (esim. Kuopio, Ufa, Baikal)…">
+      <button class="btn" id="bSearch">Hae</button>
+    </div>
+    <div id="searchRes"></div>
+    <div id="pickMap"></div>
+    <div class="bottom">
+      <div class="coords" id="pickCoords">Klikkaa karttaa valitaksesi sijainnin.</div>
+      <button class="btn" id="bPickCancel">Peruuta</button>
+      <button class="btn primary" id="bPickOk" disabled>Käytä sijaintia</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Tila ---------- */
+const LS_KEY = 'ydna-haplopuu-v1';
+const PALETTE = ['#c0392b','#e67e22','#d4a017','#6ab04c','#27ae60','#16a085','#00a8ff','#2980b9',
+                 '#1f4e8c','#6c5ce7','#8e44ad','#e84393','#a0522d','#7f8c8d','#2c3e50','#b8651b'];
+let state = { nodes: [], settings: { rootBottom: true, timeScale: false, regions: true, zoom: 100, ownId: null, ownHi: true, edgeLabels: true } };
+let editId = null;
+let formColor = PALETTE[8];
+const $ = id => document.getElementById(id);
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const byId = id => state.nodes.find(n => n.id === id);
+
+let saveWarned = false;
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch(e){ if (!saveWarned){ saveWarned = true; alert('Selaimen muisti täyttyi (kuvat vievät tilaa). Tallenna työsi Tallenna tiedosto -napilla.'); } }
+}
+const OWN_DEFAULT = '★ OMA HAPLO';
+let formPhoto = null;
+function setPhoto(d){
+  formPhoto = d || null;
+  $('photoPrev').src = formPhoto || ''; $('photoPrev').style.display = formPhoto ? '' : 'none';
+  $('bPhotoDel').style.display = formPhoto ? '' : 'none';
+  $('bPhoto').textContent = formPhoto ? 'Vaihda kuva…' : 'Lisää kuva…';
+}
+// kuva pienennetään neliöksi (240 px), jotta tallennus pysyy kevyenä
+function readPhoto(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const S = 240, c = document.createElement('canvas'); c.width = c.height = S;
+      const m = Math.min(img.width, img.height), sx = (img.width - m) / 2, sy = (img.height - m) / 2;
+      const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
+      x.drawImage(img, sx, sy, m, m, 0, 0, S, S);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(); };
+    img.src = url;
+  });
+}
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if (s && Array.isArray(s.nodes)) state = { nodes: s.nodes, settings: Object.assign(state.settings, s.settings || {}) };
+  }catch(e){}
+}
+
+/* ---------- Apufunktiot ---------- */
+function children(id){ return state.nodes.filter(n => (n.parentId || null) === id); }
+function roots(){ return state.nodes.filter(n => !n.parentId || !byId(n.parentId)); }
+function descendants(id){
+  const out = new Set(), st = [id];
+  while (st.length){ const c = st.pop(); for (const k of children(c)) if (!out.has(k.id)){ out.add(k.id); st.push(k.id); } }
+  return out;
+}
+function lineage(id){ // juuresta solmuun
+  const path = []; let n = byId(id); const seen = new Set();
+  while (n && !seen.has(n.id)){ seen.add(n.id); path.unshift(n); n = byId(n.parentId); }
+  return path;
+}
+function fmtAge(n){
+  if (n.age == null || n.age === '') return '';
+  return Number(n.age).toLocaleString('fi-FI') + (n.ageErr ? ' ±' + Number(n.ageErr).toLocaleString('fi-FI') : '') + ' v. sitten';
+}
+function calYear(age){
+  const y = Math.round(1950 - age);
+  return y <= 0 ? `n. ${(1 - y).toLocaleString('fi-FI')} eaa.` : `n. ${y} jaa.`;
+}
+function sortedTree(){ // syvyyshaku järjestys vanhin ensin
+  const out = [];
+  const ageSort = (a,b) => (b.age ?? -1) - (a.age ?? -1) || a.snp.localeCompare(b.snp);
+  const walk = (n, d) => { out.push({ n, d }); children(n.id).sort(ageSort).forEach(c => walk(c, d + 1)); };
+  roots().sort(ageSort).forEach(r => walk(r, 0));
+  return out;
+}
+
+/* ---------- Lomake ---------- */
+function buildSwatches(){
+  const box = $('swatches'); box.innerHTML = '';
+  PALETTE.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sw'; b.style.background = c; b.title = c; b.dataset.c = c;
+    b.onclick = () => setColor(c);
+    box.appendChild(b);
+  });
+  const ci = document.createElement('input'); ci.type = 'color'; ci.id = 'fColor'; ci.title = 'Oma väri';
+  ci.oninput = () => setColor(ci.value);
+  box.appendChild(ci);
+  setColor(formColor);
+}
+function setColor(c){
+  formColor = c;
+  document.querySelectorAll('.sw').forEach(s => s.classList.toggle('sel', s.dataset.c.toLowerCase() === c.toLowerCase()));
+  $('fColor').value = c;
+}
+function renderParentSelect(selected){
+  const sel = $('fParent');
+  const banned = editId ? new Set([editId, ...descendants(editId)]) : new Set();
+  sel.innerHTML = '<option value="">— juurihaplo (ei isähaploa) —</option>' +
+    sortedTree().filter(x => !banned.has(x.n.id))
+      .map(x => `<option value="${x.n.id}">${' '.repeat(x.d)}${esc(x.n.snp)}${x.n.age != null ? ' · ' + x.n.age : ''}</option>`).join('');
+  sel.value = selected || '';
+}
+function renderRegionList(){
+  const regs = [...new Set(state.nodes.map(n => n.region).filter(Boolean))].sort();
+  $('regionList').innerHTML = regs.map(r => `<option value="${esc(r)}">`).join('');
+}
+function updateAgeHint(){
+  const v = $('fAge').value;
+  $('ageHint').textContent = v !== '' ? `≈ ${calYear(+v)} (ybp, perusvuosi 1950)` : 'Vuotta ennen nykyhetkeä (ybp, perusvuosi 1950).';
+}
+function clearForm(parentId){
+  editId = null;
+  $('form').reset();
+  $('formTitle').textContent = 'Uusi variantti';
+  $('bSubmit').textContent = 'Lisää';
+  $('bDel').disabled = true; $('bChild').disabled = true; $('fOwn').checked = false; $('fHideSub').disabled = true; setPhoto(null); syncOwnLabel();
+  if (parentId){ const p = byId(parentId); if (p) setColor(p.color || formColor); }
+  renderParentSelect(parentId);
+  updateAgeHint(); renderList(); renderTree();
+}
+function loadForm(id){
+  const n = byId(id); if (!n) return;
+  editId = id;
+  $('formTitle').textContent = 'Muokkaa: ' + n.snp;
+  $('bSubmit').textContent = 'Tallenna muutokset';
+  $('bDel').disabled = false; $('bChild').disabled = false;
+  $('fSnp').value = n.snp || ''; $('fAlias').value = n.alias || '';
+  $('fAge').value = n.age ?? ''; $('fAgeErr').value = n.ageErr ?? '';
+  $('fRegion').value = n.region || '';
+  $('fLat').value = n.lat ?? ''; $('fLng').value = n.lng ?? '';
+  $('fNotes').value = n.notes || '';
+  $('fOwn').checked = state.settings.ownId === id;
+  $('fPerson').value = n.person || ''; setPhoto(n.photo); syncOwnLabel();
+  $('fHide').checked = !!n.hide; $('fHideSub').checked = !!n.hideSub; $('fHideSub').disabled = !n.hide;
+  setColor(n.color || PALETTE[8]);
+  renderParentSelect(n.parentId);
+  updateAgeHint(); renderList(); renderTree();
+}
+function num(v){ return v === '' || v == null || isNaN(+v) ? null : +v; }
+
+$('form').onsubmit = e => {
+  e.preventDefault();
+  const snp = $('fSnp').value.trim(); if (!snp) return;
+  const dup = state.nodes.find(n => n.snp.toLowerCase() === snp.toLowerCase() && n.id !== editId);
+  if (dup && !confirm(`Haplo ${snp} on jo puussa. Lisätäänkö silti?`)) return;
+  const data = {
+    snp, alias: $('fAlias').value.trim(), parentId: $('fParent').value || null,
+    age: num($('fAge').value), ageErr: num($('fAgeErr').value), color: formColor,
+    region: $('fRegion').value.trim(), lat: num($('fLat').value), lng: num($('fLng').value),
+    notes: $('fNotes').value.trim(), person: $('fPerson').value.trim(), photo: formPhoto,
+    hide: $('fHide').checked, hideSub: $('fHide').checked && $('fHideSub').checked
+  };
+  const p = byId(data.parentId);
+  if (p && p.age != null && data.age != null && data.age > p.age &&
+      !confirm(`Ikäarvio (${data.age}) on suurempi kuin isähaplon ${p.snp} (${p.age}). Tallennetaanko silti?`)) return;
+  if (editId) Object.assign(byId(editId), data);
+  else { const n = Object.assign({ id: uid() }, data); state.nodes.push(n); editId = n.id; }
+  if ($('fOwn').checked){ state.settings.ownId = editId; state.settings.ownLabel = $('fOwnLabel').value.trim(); }
+  else if (state.settings.ownId === editId) state.settings.ownId = null;
+  save(); refresh(); loadForm(editId);
+};
+$('bNew').onclick = () => clearForm(null);
+$('bChild').onclick = () => { const pid = editId; clearForm(pid); $('fSnp').focus(); };
+$('bDel').onclick = () => {
+  const n = byId(editId); if (!n) return;
+  const k = children(n.id).length;
+  if (!confirm(`Poistetaanko ${n.snp}?` + (k ? ` Sen ${k} alahaaraa siirretään suoraan isähaplon alle.` : ''))) return;
+  children(n.id).forEach(c => c.parentId = n.parentId || null);
+  state.nodes = state.nodes.filter(x => x.id !== n.id);
+  if (state.settings.ownId === n.id) state.settings.ownId = null;
+  save(); clearForm(null); refresh();
+};
+$('fAge').oninput = updateAgeHint;
+function syncOwnLabel(){
+  $('fOwnLabel').disabled = !$('fOwn').checked;
+  $('fOwnLabel').value = $('fOwn').checked ? (state.settings.ownLabel ?? OWN_DEFAULT) : '';
+}
+$('fOwn').onchange = syncOwnLabel;
+$('bPhoto').onclick = () => $('photoIn').click();
+$('bPhotoDel').onclick = () => setPhoto(null);
+$('photoIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try{ setPhoto(await readPhoto(f)); }catch(err){ alert('Kuvaa ei voitu lukea.'); }
+};
+$('fHide').onchange = () => { $('fHideSub').disabled = !$('fHide').checked; if (!$('fHide').checked) $('fHideSub').checked = false; };
+$('fRegion').onchange = () => { // sama alue -> ehdota samaa väriä
+  const r = $('fRegion').value.trim().toLowerCase();
+  const m = state.nodes.find(n => n.id !== editId && (n.region || '').toLowerCase() === r);
+  if (m && m.color) setColor(m.color);
+};
+$('bClearLoc').onclick = () => { $('fLat').value = ''; $('fLng').value = ''; };
+
+/* ---------- Lista ---------- */
+function renderList(){
+  $('count').textContent = state.nodes.length;
+  const t = sortedTree(), hid = printSet().hidden;
+  $('list').innerHTML = t.length ? t.map(({n,d}) => `
+    <div class="item${n.id === editId ? ' sel' : ''}" data-id="${n.id}" style="padding-left:${6 + d*14}px;${hid.has(n.id) ? 'opacity:.5' : ''}" title="${esc(n.notes)}${hid.has(n.id) ? ' (piilotettu tulosteesta)' : ''}">
+      <span class="dot" style="background:${esc(n.color)}"></span>
+      <b>${esc(n.snp)}</b>${n.id === state.settings.ownId ? ' <span style="color:#d4a017" title="Oma haplo">★</span>' : ''}
+      ${n.age != null ? `<span class="age">${n.age.toLocaleString('fi-FI')}</span>` : ''}
+      ${n.region ? `<span class="reg">${esc(n.region)}</span>` : ''}
+      ${n.lat == null ? '' : '<span class="reg" title="Sijainti asetettu">📍</span>'}
+      ${hid.has(n.id) ? '<span class="reg" title="Piilotettu tulosteesta">⊘</span>' : ''}
+    </div>`).join('') : '<div class="hint">Ei variantteja vielä. Lisää juurihaplo (esim. N-M231) tai lataa esimerkkidata.</div>';
+}
+$('list').onclick = e => { const it = e.target.closest('.item'); if (it) loadForm(it.dataset.id); };
+
+/* ---------- Haplopuu (SVG) ---------- */
+const FONT = 'Segoe UI, Arial, sans-serif';
+/* Tulosteeseen näytettävät haplot: piilotetut pois, alahaarat pois jos "koko haara" (paitsi oma isälinja) */
+function printSet(){
+  const ownLine = new Set(state.settings.ownId ? lineage(state.settings.ownId).map(n => n.id) : []);
+  const hidden = new Set();
+  state.nodes.forEach(n => {
+    if (n.hide) hidden.add(n.id);
+    if (n.hide && n.hideSub) descendants(n.id).forEach(d => { if (!ownLine.has(d) || byId(d).hide) hidden.add(d); });
+  });
+  const nodes = state.nodes.filter(n => !hidden.has(n.id));
+  const keep = new Set(nodes.map(n => n.id)), parentOf = {};
+  nodes.forEach(n => { let p = byId(n.parentId); const seen = new Set(); while (p && !keep.has(p.id) && !seen.has(p.id)){ seen.add(p.id); p = byId(p.parentId); } parentOf[n.id] = p && keep.has(p.id) ? p.id : null; });
+  return { nodes, parentOf, hidden };
+}
+function treeSVG(opts = {}){
+  const S = state.settings;
+  const NS = opts.nodes || state.nodes;
+  if (!NS.length) return null;
+  const inSet = new Set(NS.map(n => n.id));
+  const pid = n => opts.parentOf ? opts.parentOf[n.id] : (inSet.has(n.parentId) ? n.parentId : null);
+  const pnode = n => { const p = pid(n); return p ? byId(p) : null; };
+  const kidMap = {}; NS.forEach(n => { const p = pid(n); if (p) (kidMap[p] ||= []).push(n); });
+  const kids = id => (kidMap[id] || []).slice();
+  const rootsL = NS.filter(n => !pid(n));
+  const fade = opts.fade || new Set();
+  const forExport = !!opts.forExport;
+
+  const DX = 150, DY = 115, PAD = 60, TOPPAD = 75;
+  const pos = {}, depth = {}, desc = {};
+  let leaf = 0, maxDepth = 0;
+  const ageSort = (a,b) => (b.age ?? -1) - (a.age ?? -1) || a.snp.localeCompare(b.snp);
+  const place = (n, d) => {
+    depth[n.id] = d; maxDepth = Math.max(maxDepth, d);
+    const ch = kids(n.id).sort(ageSort);
+    let cnt = 0;
+    if (!ch.length){ pos[n.id] = { x: leaf++ }; }
+    else {
+      ch.forEach(c => { cnt += 1 + place(c, d + 1); });
+      pos[n.id] = { x: (pos[ch[0].id].x + pos[ch[ch.length-1].id].x) / 2 };
+    }
+    desc[n.id] = cnt; return cnt;
+  };
+  rootsL.sort(ageSort).forEach(r => { place(r, 0); leaf += 0.6; });
+
+  const eff = {};
+  const known = NS.filter(n => n.age != null).map(n => n.age);
+  const maxAge = known.length ? Math.max(...known) : 1000;
+  const effAge = n => {
+    if (eff[n.id] != null) return eff[n.id];
+    if (n.age != null) return eff[n.id] = n.age;
+    const p = pnode(n);
+    if (!p) return eff[n.id] = maxAge * 1.05;
+    const pa = effAge(p);
+    const ka = kids(n.id).map(c => c.age).filter(a => a != null);
+    return eff[n.id] = ka.length ? (pa + Math.max(...ka)) / 2 : pa * 0.85;
+  };
+  const timeMode = S.timeScale && known.length > 0;
+  const H = Math.max(maxDepth * DY, timeMode ? 700 : 0);
+  const topAge = timeMode ? Math.max(...NS.map(effAge)) : 0;
+  const tOf = n => timeMode ? (topAge - effAge(n)) / (topAge || 1) : (maxDepth ? depth[n.id] / maxDepth : 0);
+  const AXIS = (timeMode ? 70 : 0) + (NS.some(n => n.person || n.photo) ? 150 : 0);  // tilaa nimille vasemmalla
+  NS.forEach(n => {
+    const t = tOf(n);
+    pos[n.id].X = AXIS + PAD + pos[n.id].x * DX;
+    pos[n.id].Y = TOPPAD + (S.rootBottom ? (1 - t) : t) * H;
+  });
+  const W = AXIS + PAD * 2 + Math.max(0, leaf - 1) * DX + 110;
+  const HH = TOPPAD * 2 + H + 60;
+
+  const sel = new Set(!forExport && editId ? lineage(editId).map(n => n.id) : []);
+  const ownN = S.ownHi ? byId(S.ownId) : null;
+  const own = new Set(ownN ? lineage(ownN.id).map(n => n.id) : []);
+  const GOLD = '#f2b705';
+  let g = '';
+  if (S.regions){
+    const regs = {};
+    NS.forEach(n => { if (n.region){ (regs[n.region] ||= []).push(n); } });
+    Object.entries(regs).forEach(([r, ns]) => {
+      const xs = ns.map(n => pos[n.id].X), ys = ns.map(n => pos[n.id].Y);
+      const x0 = Math.min(...xs) - 28, x1 = Math.max(...xs) + 118, y0 = Math.min(...ys) - 34, y1 = Math.max(...ys) + 58;
+      const col = ns[0].color || '#888';
+      g += `<rect x="${x0}" y="${y0}" width="${x1-x0}" height="${y1-y0}" rx="26" fill="${col}" fill-opacity="0.10" stroke="${col}" stroke-opacity="0.35" stroke-dasharray="4 4"/>`;
+      g += `<text x="${x1 - 12}" y="${y1 - 9}" text-anchor="end" font-family="${FONT}" font-size="13" font-style="italic" font-weight="600" fill="${col}" stroke="#fbfaf6" stroke-width="4" paint-order="stroke">${esc(r)}</text>`;
+    });
+  }
+  if (timeMode){
+    const steps = [100,250,500,1000,2000,2500,5000,10000];
+    const step = steps.find(s => topAge / s <= 12) || 10000;
+    const ax = 40 + AXIS - 70;
+    g += `<line x1="${ax}" y1="${TOPPAD}" x2="${ax}" y2="${TOPPAD + H}" stroke="#b9b2a4"/>`;
+    for (let a = 0; a <= topAge; a += step){
+      const t = (topAge - a) / topAge, y = TOPPAD + (S.rootBottom ? (1 - t) : t) * H;
+      g += `<line x1="${ax-4}" y1="${y}" x2="${W - 20}" y2="${y}" stroke="#e7e1d5" stroke-dasharray="${a ? '2 5' : ''}"/>`;
+      g += `<text x="${ax-7}" y="${y+4}" text-anchor="end" font-family="${FONT}" font-size="10.5" fill="#8a8275">${a.toLocaleString('fi-FI')}</text>`;
+    }
+    g += `<text x="${ax - 28}" y="${TOPPAD + H/2}" transform="rotate(-90 ${ax - 28} ${TOPPAD + H/2})" text-anchor="middle" font-family="${FONT}" font-size="11" fill="#8a8275">vuotta sitten</text>`;
+  }
+  // katkaistu alkupää: katkoviiva juuren "vanhempaan" suuntaan
+  if (opts.cutLabel){
+    rootsL.forEach(rn => {
+      const { X, Y } = pos[rn.id], dir = S.rootBottom ? 1 : -1, y2 = Y + dir * 72;
+      g += `<line x1="${X}" y1="${Y}" x2="${X}" y2="${y2}" stroke="${rn.color || '#888'}" stroke-width="4" stroke-dasharray="3 6" stroke-linecap="round"/>`;
+      g += `<text x="${X + 10}" y="${y2 + (S.rootBottom ? 6 : 0)}" font-family="${FONT}" font-size="11" font-style="italic" fill="#6b7680">vanhemmat haarat: ${esc(opts.cutLabel)}</text>`;
+    });
+  }
+  let edges = '', defs = '', elabels = '';
+  const EL = S.edgeLabels !== false;
+  NS.forEach(n => {
+    const p = pnode(n); if (!p) return;
+    const a = pos[p.id], b = pos[n.id];
+    const w = (2 + Math.log2(desc[n.id] + 1) * 2.2).toFixed(1);
+    const my = (a.Y + b.Y) / 2;
+    const dim = (sel.size && !(sel.has(n.id) && sel.has(p.id))) || fade.has(n.id);
+    const dpath = `M${a.X},${a.Y} C${a.X},${my} ${b.X},${my} ${b.X},${b.Y}`;
+    if (own.has(n.id) && own.has(p.id)) edges += `<path d="${dpath}" fill="none" stroke="${GOLD}" stroke-width="${(+w + 9).toFixed(1)}" stroke-linecap="round" stroke-opacity="0.55"/>`;
+    edges += `<path d="${dpath}" fill="none" stroke="${n.color || '#888'}" stroke-width="${w}" stroke-linecap="round" stroke-opacity="${dim ? 0.3 : 0.9}"${fade.has(n.id) ? ' stroke-dasharray="6 5"' : ''}/>`;
+    if (EL){
+      const rev = (b.X < a.X - 1) || (Math.abs(b.X - a.X) <= 1 && b.Y > a.Y);
+      const tp = rev ? `M${b.X},${b.Y} C${b.X},${my} ${a.X},${my} ${a.X},${a.Y}` : dpath;
+      const id = (opts.idPrefix || 'ep') + '-' + String(n.id).replace(/[^\w-]/g, '');
+      defs += `<path id="${id}" d="${tp}"/>`;
+      const off = (+w / 2 + 4).toFixed(1), op = dim ? 0.45 : 1;
+      const halo = 'stroke="#fbfaf6" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round"';
+      elabels += `<g data-id="${n.id}" style="cursor:pointer" opacity="${op}">`;
+      elabels += `<text font-family="${FONT}" font-size="12.5" font-weight="700" fill="#1f2a33" ${halo} dy="-${off}"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(n.snp)}${n.alias ? `<tspan font-size="10" font-weight="400" fill="#6b7680"> ${esc(n.alias)}</tspan>` : ''}</textPath></text>`;
+      if (n.age != null) elabels += `<text font-family="${FONT}" font-size="11" font-weight="600" fill="#b8651b" ${halo} dy="${(+off + 9).toFixed(1)}"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${n.age.toLocaleString('fi-FI')}${n.ageErr ? ' ±' + n.ageErr : ''}</textPath></text>`;
+      elabels += `</g>`;
+    }
+  });
+  let nodes = '';
+  NS.forEach(n => {
+    const { X, Y } = pos[n.id];
+    const col = n.color || '#888', isSel = !forExport && n.id === editId;
+    const r = rootsL.includes(n) ? 12 : 9;
+    nodes += `<g data-id="${n.id}" style="cursor:pointer"${fade.has(n.id) ? ' opacity="0.4"' : ''}>`;
+    if (own.has(n.id)) nodes += `<circle cx="${X}" cy="${Y}" r="${r + 5}" fill="${GOLD}" fill-opacity="0.45"/>`;
+    if (isSel) nodes += `<circle cx="${X}" cy="${Y}" r="${r + 6}" fill="none" stroke="#1f2a33" stroke-width="2" stroke-dasharray="3 3"/>`;
+    nodes += `<circle cx="${X}" cy="${Y}" r="${r}" fill="${col}" stroke="#fff" stroke-width="2.5"/>`;
+    nodes += `<circle cx="${X - r*0.3}" cy="${Y - r*0.35}" r="${r*0.35}" fill="#fff" fill-opacity="0.45"/>`;
+    let ty = Y - 3; const tx = X + r + 5;
+    if (ownN && n.id === ownN.id){
+      const st = (cx, cy, R) => Array.from({length:10}, (_, i) => { const rr = i % 2 ? R*0.45 : R, a = Math.PI/5*i - Math.PI/2; return `${(cx + rr*Math.cos(a)).toFixed(1)},${(cy + rr*Math.sin(a)).toFixed(1)}`; }).join(' ');
+      nodes += `<polygon points="${st(X, Y, r + 9)}" fill="${GOLD}" stroke="#7a5b00" stroke-width="1.2"/>`;
+      nodes += `<circle cx="${X}" cy="${Y}" r="${r - 2}" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
+      const ly = S.rootBottom ? Y - r - 22 : Y + r + 28;
+      const lbl = S.ownLabel ?? OWN_DEFAULT;
+      if (lbl){
+        const bw = Math.max(40, lbl.length * 6.6 + 16);
+        nodes += `<rect x="${X - bw/2}" y="${ly - 12}" width="${bw}" height="17" rx="8" fill="#1f2a33"/><text x="${X}" y="${ly + 1}" text-anchor="middle" font-family="${FONT}" font-size="10.5" font-weight="700" fill="${GOLD}">${esc(lbl)}</text>`;
+      }
+    }
+    // henkilö ja kuva haplon vasemmalla puolella (vain jos annettu)
+    if (n.photo || n.person){
+      const halo = 'stroke="#fbfaf6" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round"';
+      if (n.photo){
+        const R = 20, cx = X - r - 8 - R, cid = (opts.idPrefix || 'ep') + '-ph-' + String(n.id).replace(/[^\w-]/g, '');
+        defs += `<clipPath id="${cid}"><circle cx="${cx}" cy="${Y}" r="${R}"/></clipPath>`;
+        nodes += `<circle cx="${cx}" cy="${Y}" r="${R + 2}" fill="#fff" stroke="${col}" stroke-width="2.5"/>`;
+        nodes += `<image href="${n.photo}" x="${cx - R}" y="${Y - R}" width="${2*R}" height="${2*R}" clip-path="url(#${cid})" preserveAspectRatio="xMidYMid slice"/>`;
+        if (n.person) nodes += `<text x="${cx - R - 7}" y="${Y + 4}" text-anchor="end" font-family="${FONT}" font-size="11" font-style="italic" font-weight="600" fill="#1f2a33" ${halo}>${esc(n.person)}</text>`;
+      } else {
+        nodes += `<text x="${X - r - 7}" y="${Y + 4}" text-anchor="end" font-family="${FONT}" font-size="11" font-style="italic" font-weight="600" fill="#1f2a33" ${halo}>${esc(n.person)}</text>`;
+      }
+    }
+    if (!EL || !pnode(n)){
+      nodes += `<text x="${tx}" y="${ty}" font-family="${FONT}" font-size="13" font-weight="700" fill="#1f2a33">${esc(n.snp)}</text>`;
+      if (n.alias){ ty += 12; nodes += `<text x="${tx}" y="${ty}" font-family="${FONT}" font-size="10" fill="#6b7680">${esc(n.alias)}</text>`; }
+      if (n.age != null){ ty += 13; nodes += `<text x="${tx}" y="${ty}" font-family="${FONT}" font-size="11" font-weight="600" fill="#b8651b">${n.age.toLocaleString('fi-FI')}${n.ageErr ? ' ±' + n.ageErr : ''} ybp</text>`; }
+    }
+    nodes += `<title>${esc(n.snp)}${n.person ? ' – ' + esc(n.person) : ''}${n.alias ? ' (' + esc(n.alias) + ')' : ''}${n.age != null ? '\n' + fmtAge(n) + ' – ' + calYear(n.age) : ''}${n.region ? '\n' + esc(n.region) : ''}${fade.has(n.id) ? '\n(piilotettu tulosteesta)' : ''}${n.notes ? '\n' + esc(n.notes) : ''}</title></g>`;
+  });
+  const title = opts.title ?? (rootsL.length ? `Haplopuu ${rootsL.map(r => r.snp).join(', ')}` : '');
+  const tty = S.rootBottom ? HH - 18 : 26;
+  const titleSvg = `<text x="${W - 20}" y="${tty}" text-anchor="end" font-family="${FONT}" font-size="16" font-weight="700" fill="#1f2a33">${esc(title)}</text>`;
+  const z = opts.zoom ?? 1;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(W*z)}" height="${Math.round(HH*z)}" viewBox="0 0 ${W} ${HH}" preserveAspectRatio="xMidYMid meet">` +
+         `<rect width="100%" height="100%" fill="#fbfaf6"/><defs>${defs}</defs>${g}${edges}${nodes}${elabels}${titleSvg}</svg>`;
+  return opts.withSize ? { svg, W, H: HH } : svg;
+}
+function renderTree(){
+  const ps = printSet();
+  const s = treeSVG({ zoom: state.settings.zoom / 100, fade: ps.hidden });
+  $('treeWrap').innerHTML = s || '<div class="empty">Puu on tyhjä. Lisää ensimmäinen variantti vasemmalta tai lataa esimerkkidata.</div>';
+}
+$('treeWrap').onclick = e => { const g = e.target.closest('g[data-id]'); if (g) loadForm(g.dataset.id); };
+['oBottom','oTime','oRegions','oOwn','oEdge'].forEach(id => $(id).onchange = () => {
+  state.settings.rootBottom = $('oBottom').checked;
+  state.settings.timeScale = $('oTime').checked;
+  state.settings.regions = $('oRegions').checked;
+  state.settings.ownHi = $('oOwn').checked;
+  state.settings.edgeLabels = $('oEdge').checked;
+  save(); renderTree();
+});
+$('oZoom').oninput = () => { state.settings.zoom = +$('oZoom').value; save(); renderTree(); };
+
+/* ---------- Kartta ---------- */
+let map, mapLayer, mapLegend;
+let pmap, pmapLayer, pmapLegend, pmapBase;
+const DEFAULT_BASE = 'Katukartta (Esri)';
+/* Huom: OpenStreetMapin omat palvelimet estävät paikallisesta tiedostosta (file://) avatut sivut,
+   koska selain ei lähetä Referer-otsaketta. Siksi käytetään palveluja, jotka toimivat ilman sitä. */
+function baseLayers(){
+  const esri = (svc, attr) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 18, attribution: attr });
+  const b = {
+    'Katukartta (Esri)': esri('World_Street_Map', '© Esri'),
+    'Maasto (Esri)': esri('World_Topo_Map', '© Esri'),
+    'Satelliitti (Esri)': esri('World_Imagery', '© Esri'),
+    'Luonto (Esri)': esri('NatGeo_World_Map', '© Esri, National Geographic')
+  };
+  const c = state.settings.customTiles;
+  if (c && c.url){
+    const url = c.url.replace(/\{key\}/g, encodeURIComponent(c.key || ''));
+    b['Oma: ' + (c.name || 'karttapohja')] = L.tileLayer(url, { maxZoom: 20, attribution: c.attr || '' });
+  }
+  return b;
+}
+function baseName(){ const n = state.settings.base; return n && baseLayers()[n] ? n : DEFAULT_BASE; }
+/* asettaa karttaan pohjakerrokset ja valitsimen (käytetään myös asetusten muuttuessa) */
+function setBases(m){
+  if (m._baseCtrl){ m.removeControl(m._baseCtrl); }
+  if (m._base){ m.removeLayer(m._base); }
+  const b = baseLayers(), name = baseName();
+  m._base = b[name]; m._base.addTo(m); m._base.bringToBack();
+  m._baseCtrl = L.control.layers(b).addTo(m);
+  m.off('baselayerchange');
+  m.on('baselayerchange', e => { m._base = e.layer; state.settings.base = e.name; save(); });
+}
+function addLegend(m){
+  let el; const c = L.control({ position: 'bottomleft' });
+  c.onAdd = () => { el = L.DomUtil.create('div', 'legend'); L.DomEvent.disableScrollPropagation(el); return el; };
+  c.addTo(m); return el;
+}
+function initMap(){
+  if (map || typeof L === 'undefined') return;
+  map = L.map('map', { worldCopyJump: true }).setView([55, 60], 3);
+  setBases(map);
+  L.control.scale({ imperial: false }).addTo(map);
+  mapLayer = L.layerGroup().addTo(map);
+  mapLegend = addLegend(map);
+}
+let endManual = false;
+function renderEndSelect(){
+  const sel = $('mEnd'), own = state.settings.ownId && byId(state.settings.ownId) ? state.settings.ownId : null;
+  const cur = endManual ? sel.value : (own || sel.value);
+  const t = sortedTree();
+  sel.innerHTML = t.map(({n,d}) => `<option value="${n.id}">${' '.repeat(d)}${esc(n.snp)}</option>`).join('');
+  const leaves = t.filter(x => !children(x.n.id).length);
+  sel.value = (cur && byId(cur)) ? cur : (own || editId || (leaves[0] && leaves[0].n.id) || '');
+}
+function numIcon(i, col, end){
+  const ring = end ? 'box-shadow:0 0 0 3px #f2b705,0 1px 4px rgba(0,0,0,.5);' : '';
+  return L.divIcon({ className: '', html: `<div class="num-icon" style="background:${col};width:24px;height:24px;${ring}">${i}</div>`, iconSize: [24,24], iconAnchor: [12,12] });
+}
+function arrowIcon(a, b, col){
+  const pa = L.CRS.EPSG3857.latLngToPoint(a, 0), pb = L.CRS.EPSG3857.latLngToPoint(b, 0);
+  const ang = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
+  return L.divIcon({ className: 'arrow-icon', iconSize: [18,18], iconAnchor: [9,9],
+    html: `<svg width="18" height="18" viewBox="-9 -9 18 18" style="transform:rotate(${ang}deg)"><path d="M-6,-6 L7,0 L-6,6 L-3,0 Z" fill="${col}" stroke="#fff" stroke-width="1.2"/></svg>` });
+}
+function hasLoc(n){ return n && n.lat != null && n.lng != null; }
+/* piirtää isälinjan (ja halutessa kaikki haarat) annettuun karttaan */
+function drawMap(m, layer, legendEl, o){
+  layer.clearLayers();
+  const skip = o.skip || new Set(), bounds = [];
+  const vis = state.nodes.filter(n => !skip.has(n.id));
+  const visParent = n => { let p = byId(n.parentId); while (p && skip.has(p.id)) p = byId(p.parentId); return p; };
+  // lähin näkyvä esi-isä, jolla on sijainti (sijainnittomat välihaplot ohitetaan)
+  const locParent = n => { let p = byId(n.parentId); const seen = new Set(); while (p && !seen.has(p.id) && (skip.has(p.id) || !hasLoc(p))){ seen.add(p.id); p = byId(p.parentId); } return p && hasLoc(p) && !skip.has(p.id) ? p : null; };
+  const lineIds = new Set(o.endId ? lineage(o.endId).map(n => n.id) : []);
+  let side = [];
+  const mode = o.mode || 'branches';
+  if (mode === 'all') side = vis.filter(n => hasLoc(n) && !lineIds.has(n.id));
+  else if (mode === 'branches'){
+    // isälinjan haarautumat: kaikki sijainnilliset haplot, jotka polveutuvat isälinjan vanhimmasta sijainnillisesta haplosta
+    const firstLoc = lineage(o.endId || '').find(n => hasLoc(n) && !skip.has(n.id));
+    if (firstLoc){ const d = descendants(firstLoc.id); side = vis.filter(n => d.has(n.id) && hasLoc(n) && !lineIds.has(n.id)); }
+  }
+  side.forEach(n => {
+    const p = locParent(n); if (!p) return;
+    const a = [p.lat, p.lng], b = [n.lat, n.lng], col = n.color || '#888';
+    L.polyline([a,b], { color: '#fff', weight: 5, opacity: .7 }).addTo(layer);
+    L.polyline([a,b], { color: col, weight: 2.5, opacity: .75 }).addTo(layer);
+    L.marker([(a[0]+b[0])/2, (a[1]+b[1])/2], { icon: arrowIcon(L.latLng(a), L.latLng(b), col), interactive: false, opacity: .85 }).addTo(layer);
+  });
+  side.forEach(n => {
+    const mk = L.circleMarker([n.lat,n.lng], { radius: 8, color: '#fff', weight: 2, fillColor: n.color || '#888', fillOpacity: .95 })
+      .bindPopup(popupHtml(n)).addTo(layer);
+    if (o.labels) mk.bindTooltip(`${esc(n.snp)}${n.age != null ? ' · ' + n.age.toLocaleString('fi-FI') : ''}${n.person ? ' · ' + esc(n.person) : ''}`, { permanent: true, direction: 'right', offset: [8,0], className: 'snp-tip', opacity: .85 });
+    bounds.push([n.lat,n.lng]);
+  });
+  const path = o.endId ? lineage(o.endId).filter(n => !skip.has(n.id)) : [];
+  const pts = path.filter(hasLoc);
+  for (let i = 1; i < pts.length; i++){
+    const a = [pts[i-1].lat, pts[i-1].lng], b = [pts[i].lat, pts[i].lng], col = pts[i].color || '#1f4e8c';
+    L.polyline([a,b], { color: '#f2b705', weight: 13, opacity: .55 }).addTo(layer);
+    L.polyline([a,b], { color: '#fff', weight: 8, opacity: .9 }).addTo(layer);
+    L.polyline([a,b], { color: col, weight: 5, opacity: 1 }).addTo(layer);
+    const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2];
+    L.marker(mid, { icon: arrowIcon(L.latLng(a), L.latLng(b), col), interactive: false }).addTo(layer);
+  }
+  pts.forEach((n, i) => {
+    const isEnd = i === pts.length - 1;
+    const mk = L.marker([n.lat,n.lng], { icon: numIcon(i + 1, n.color || '#1f4e8c', isEnd), zIndexOffset: 1000 }).bindPopup(popupHtml(n)).addTo(layer);
+    if (o.labels) mk.bindTooltip(`${i + 1}. ${esc(n.snp)}${n.age != null ? ' · ' + n.age.toLocaleString('fi-FI') : ''}${n.person ? ' · ' + esc(n.person) : ''}`, { permanent: true, direction: 'right', offset: [12,0], className: 'snp-tip' });
+    bounds.push([n.lat,n.lng]);
+  });
+  const endN = byId(o.endId);
+  if (legendEl){
+    const firstLocIdx = path.findIndex(hasLoc);
+    const older = firstLocIdx > 0 ? path.slice(0, firstLocIdx) : [];
+    const shown = firstLocIdx > 0 ? path.slice(firstLocIdx) : path;
+    legendEl.innerHTML = endN ? `<b>Isälinja: ${esc(endN.snp)}</b>` +
+      (older.length ? `<div style="color:#888;font-size:11px;margin-top:3px" title="${esc(older.map(n => n.snp).join(' › '))}">${esc(older[0].snp)} › … › ${esc(older[older.length-1].snp)} (${older.length} vanhempaa haploa ilman sijaintia)</div>` : '') +
+      `<ol>` + shown.map(n => {
+      const i = pts.indexOf(n);
+      return `<li style="list-style:none;${i < 0 ? 'color:#888' : ''}"><span style="display:inline-block;width:18px;text-align:right;margin-right:4px;font-weight:700">${i < 0 ? '–' : (i + 1) + '.'}</span><span class="dot" style="display:inline-block;background:${esc(n.color)};vertical-align:-1px"></span> <b>${esc(n.snp)}</b>${n.age != null ? ` <span style="color:var(--age)">${n.age.toLocaleString('fi-FI')} v.</span>` : ''}${n.region ? ' – ' + esc(n.region) : ''}${n.person ? ' · <i>' + esc(n.person) + '</i>' : ''}${i < 0 ? ' (ei sijaintia)' : ''}</li>`;
+    }).join('') + '</ol>' + (side.length ? '<b style="display:block;margin-top:6px">Muut haplot</b><ul style="margin:4px 0 0;padding-left:18px">' +
+      side.map(n => { const p = locParent(n); return `<li><span class="dot" style="display:inline-block;background:${esc(n.color)};vertical-align:-1px"></span> <b>${esc(n.snp)}</b>${n.age != null ? ` <span style="color:var(--age)">${n.age.toLocaleString('fi-FI')} v.</span>` : ''}${n.region ? ' – ' + esc(n.region) : ''}${n.person ? ' · <i>' + esc(n.person) + '</i>' : ''}${p ? ` <small style="color:#888">(← ${esc(p.snp)})</small>` : ''}</li>`; }).join('') + '</ul>' : '') : '<i>Ei haploja.</i>';
+  }
+  if (bounds.length) m.fitBounds(bounds, { paddingTopLeft: [50, 40], paddingBottomRight: [o.print ? 170 : 130, 40], maxZoom: 7, animate: false });
+  return { path, bounds, side };
+}
+function renderMap(){
+  if (!map) return;
+  drawMap(map, mapLayer, mapLegend, { mode: 'all', labels: $('mLabels').checked, endId: $('mEnd').value });
+}
+function popupHtml(n){
+  return (n.photo ? `<img src="${n.photo}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;float:right;margin-left:8px">` : '') +
+    `<b>${esc(n.snp)}</b>${n.person ? `<br><i>${esc(n.person)}</i>` : ''}${n.alias ? `<br><small>${esc(n.alias)}</small>` : ''}` +
+    (n.age != null ? `<br><span style="color:#b8651b">${fmtAge(n)}</span><br><small>${calYear(n.age)}</small>` : '') +
+    (n.region ? `<br>${esc(n.region)}` : '') + (n.notes ? `<br><small>${esc(n.notes)}</small>` : '');
+}
+$('mEnd').onchange = () => { endManual = $('mEnd').value !== state.settings.ownId; renderMap(); }; $('mLabels').onchange = renderMap;
+
+/* ---------- Sijainnin valinta ---------- */
+let pickMap, pickMarker, pickLL = null;
+$('bPick').onclick = () => {
+  $('pickModal').classList.add('open');
+  if (typeof L === 'undefined'){ $('pickCoords').textContent = 'Karttakirjasto ei latautunut (tarvitaan verkkoyhteys).'; return; }
+  if (!pickMap){
+    pickMap = L.map('pickMap', { worldCopyJump: true }).setView([58, 40], 3);
+    setBases(pickMap);
+    pickMap.on('click', e => setPick(e.latlng));
+  }
+  setTimeout(() => {
+    pickMap.invalidateSize();
+    const lat = num($('fLat').value), lng = num($('fLng').value);
+    if (lat != null && lng != null){ setPick(L.latLng(lat, lng)); pickMap.setView([lat, lng], 6); }
+    else {
+      const p = byId($('fParent').value);
+      if (hasLoc(p)) pickMap.setView([p.lat, p.lng], 5);
+      if (pickMarker){ pickMap.removeLayer(pickMarker); pickMarker = null; } pickLL = null; $('bPickOk').disabled = true;
+      $('pickCoords').textContent = 'Klikkaa karttaa valitaksesi sijainnin.';
+    }
+  }, 50);
+  $('searchQ').focus();
+};
+function setPick(ll){
+  pickLL = L.latLng(+ll.lat.toFixed(5), +L.Util.wrapNum(ll.lng, [-180,180], true).toFixed(5));
+  if (!pickMarker) pickMarker = L.marker(pickLL, { draggable: true }).addTo(pickMap).on('dragend', e => setPick(e.target.getLatLng()));
+  else pickMarker.setLatLng(pickLL);
+  $('pickCoords').textContent = `Valittu: ${pickLL.lat}, ${pickLL.lng}`;
+  $('bPickOk').disabled = false;
+}
+async function doSearch(){
+  const q = $('searchQ').value.trim(); if (!q) return;
+  const box = $('searchRes'); box.innerHTML = '<div>Haetaan…</div>';
+  try{
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=fi&q=' + encodeURIComponent(q));
+    const js = await r.json();
+    box.innerHTML = js.length ? js.map((x,i) => `<div data-i="${i}">${esc(x.display_name)}</div>`).join('') : '<div>Ei tuloksia.</div>';
+    box.onclick = e => {
+      const d = e.target.closest('[data-i]'); if (!d) return;
+      const x = js[+d.dataset.i]; const ll = L.latLng(+x.lat, +x.lon);
+      setPick(ll); pickMap.setView(ll, 7); box.innerHTML = '';
+      if (!$('fRegion').value.trim()) $('fRegion').value = x.display_name.split(',')[0];
+    };
+  }catch(err){ box.innerHTML = '<div>Haku epäonnistui – klikkaa sijainti suoraan kartalta.</div>'; }
+}
+$('bSearch').onclick = doSearch;
+$('searchQ').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); doSearch(); } };
+$('bPickCancel').onclick = () => $('pickModal').classList.remove('open');
+$('bPickOk').onclick = () => {
+  if (pickLL){ $('fLat').value = pickLL.lat; $('fLng').value = pickLL.lng; }
+  $('pickModal').classList.remove('open');
+};
+
+/* ---------- Karttapohjan asetukset ---------- */
+const PRESETS = {
+  maptiler: { name: 'MapTiler Streets', url: 'https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key={key}', attr: '© MapTiler, © OpenStreetMap' },
+  thunder: { name: 'Thunderforest Outdoors', url: 'https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey={key}', attr: '© Thunderforest, © OpenStreetMap' }
+};
+function fillBaseSelect(){
+  if (typeof L === 'undefined'){ $('tBase').innerHTML = '<option>Karttakirjasto ei latautunut</option>'; return; }
+  $('tBase').innerHTML = Object.keys(baseLayers()).map(n => `<option>${esc(n)}</option>`).join('');
+  $('tBase').value = baseName();
+}
+$('bTiles').onclick = () => {
+  const c = state.settings.customTiles || {};
+  $('tName').value = c.name || ''; $('tUrl').value = c.url || ''; $('tKey').value = c.key || ''; $('tAttr').value = c.attr || '';
+  fillBaseSelect(); $('tileModal').classList.add('open');
+};
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  const p = PRESETS[b.dataset.preset]; $('tName').value = p.name; $('tUrl').value = p.url; $('tAttr').value = p.attr; $('tKey').focus();
+});
+function applyTiles(){
+  if (typeof L === 'undefined') return;
+  [map, pickMap].forEach(m => { if (m) setBases(m); });
+  if (pmapBase){ pmap.removeLayer(pmapBase); pmapBase = null; }
+}
+$('tOk').onclick = () => {
+  const url = $('tUrl').value.trim();
+  if (url && !/\{z\}/.test(url)){ alert('URL-mallista puuttuu {z}/{x}/{y}.'); return; }
+  const had = !!(state.settings.customTiles && state.settings.customTiles.url);
+  state.settings.customTiles = url ? { name: $('tName').value.trim() || 'karttapohja', url, key: $('tKey').value.trim(), attr: $('tAttr').value.trim() } : null;
+  let base = $('tBase').value;
+  if (url && (!had || base.startsWith('Oma:'))) base = 'Oma: ' + state.settings.customTiles.name;   // uusi oma palvelu käyttöön heti
+  if (!url && base.startsWith('Oma:')) base = DEFAULT_BASE;
+  state.settings.base = base;
+  save(); applyTiles(); $('tileModal').classList.remove('open');
+};
+$('tClear').onclick = () => { state.settings.customTiles = null; if ((state.settings.base || '').startsWith('Oma:')) state.settings.base = DEFAULT_BASE; save(); applyTiles(); $('tileModal').classList.remove('open'); };
+$('tCancel').onclick = () => $('tileModal').classList.remove('open');
+
+/* ---------- Näkymät ---------- */
+let view = 'tree';
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  view = t.dataset.view;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  $('bSvg').style.display = $('bPng').style.display = view === 'tree' ? '' : 'none';
+  if (view === 'map'){ initMap(); renderEndSelect(); setTimeout(() => { if (map){ map.invalidateSize(); renderMap(); } }, 30); }
+});
+function refresh(){
+  renderRegionList(); renderList(); renderTree(); renderEndSelect();
+  if (map) renderMap();
+}
+
+/* ---------- Vienti, tuonti, tulostus ---------- */
+function download(name, blob){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const exportSVG = () => { const ps = printSet(); return treeSVG({ nodes: ps.nodes, parentOf: ps.parentOf, forExport: true }); };
+$('bSvg').onclick = () => {
+  const s = exportSVG();
+  if (s) download('haplopuu.svg', new Blob([s], { type: 'image/svg+xml' }));
+};
+$('bPng').onclick = () => {
+  const s = exportSVG(); if (!s) return;
+  const img = new Image(), url = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = img.width * 2; c.height = img.height * 2;
+    const x = c.getContext('2d'); x.scale(2,2); x.drawImage(img, 0, 0);
+    c.toBlob(b => download('haplopuu.png', b)); URL.revokeObjectURL(url);
+  };
+  img.src = url;
+};
+const PX_MM = 96 / 25.4, MIN_SCALE = 0.55;
+const PAGES = { portrait: { w: 190, h: 265 }, landscape: { w: 277, h: 178 } };
+function buildPrintTree(ps){
+  // isälinja, jonka vanhimpia osia voidaan jättää pois: oma haplo tai syvin haara
+  let endId = state.settings.ownId && ps.nodes.some(n => n.id === state.settings.ownId) ? state.settings.ownId : null;
+  if (!endId){
+    let best = null, bd = -1;
+    ps.nodes.forEach(n => { let d = 0, p = ps.parentOf[n.id]; while (p){ d++; p = ps.parentOf[p]; } if (d > bd){ bd = d; best = n.id; } });
+    endId = best;
+  }
+  const line = []; for (let id = endId; id; id = ps.parentOf[id]) line.unshift(byId(id));
+  let pick = null;
+  for (let k = 0; k < Math.max(1, line.length - 1); k++){
+    let nodes = ps.nodes, parentOf = ps.parentOf, cut = null;
+    if (k > 0){
+      const root = line[k], ids = new Set([root.id]);
+      let grew = true; while (grew){ grew = false; ps.nodes.forEach(n => { if (!ids.has(n.id) && ids.has(parentOf[n.id])){ ids.add(n.id); grew = true; } }); }
+      nodes = ps.nodes.filter(n => ids.has(n.id));
+      parentOf = Object.assign({}, ps.parentOf, { [root.id]: null });
+      cut = line.slice(0, k).map(n => n.snp).join(' › ');
+    }
+    const res = treeSVG({ nodes, parentOf, forExport: true, withSize: true, cutLabel: cut, title: '', idPrefix: 'pp' });
+    if (!res) return null;
+    let best = null;
+    for (const [o, pg] of Object.entries(PAGES)){
+      const sc = Math.min(pg.w * PX_MM / res.W, pg.h * PX_MM / res.H);
+      if (!best || sc > best.sc) best = { o, sc };
+    }
+    pick = { ...res, ...best, k, cut, root: line[k], endId };
+    if (best.sc >= MIN_SCALE) break;
+  }
+  return pick;
+}
+function waitTiles(layer, ms){
+  return new Promise(res => { let done = false; const f = () => { if (!done){ done = true; res(); } };
+    layer.once('load', f); setTimeout(f, ms); });
+}
+$('bPrint').onclick = async () => {
+  const ps = printSet();
+  if (!ps.nodes.length){ alert('Tulostettavia haploja ei ole.'); return; }
+  $('busy').classList.add('on');
+  try{
+    const t = buildPrintTree(ps);
+    const pg = PAGES[t.o];
+    $('pageStyle').textContent = `@page treepg{size:A4 ${t.o};margin:10mm}`;
+    $('printTreeTitle').innerHTML = `SNP-haplopuu${t.k ? ' alkaen ' + esc(t.root.snp) : ''}<small>${t.k ? 'Vanhimmat osat jätetty pois, jotta puu mahtuu sivulle · ' : ''}${new Date().toLocaleDateString('fi-FI')}</small>`;
+    const box = $('printTreeBox'); box.style.width = pg.w + 'mm'; box.style.height = pg.h + 'mm';
+    box.innerHTML = t.svg;
+    // kartta toiselle sivulle
+    const mv = $('mEnd').value, endId = mv && byId(mv) && !ps.hidden.has(mv) ? mv : t.endId;
+    const hasMap = typeof L !== 'undefined' && lineage(endId).some(n => hasLoc(n) && !ps.hidden.has(n.id));
+    $('pTree').classList.toggle('brk', hasMap);
+    $('pMap').style.display = hasMap ? '' : 'none';
+    if (hasMap){
+      if (!pmap){
+        pmap = L.map('printMap', { zoomSnap: 0.25, zoomControl: false, attributionControl: true, fadeAnimation: false, zoomAnimation: false, markerZoomAnimation: false });
+        L.control.scale({ imperial: false }).addTo(pmap);
+        pmapLayer = L.layerGroup().addTo(pmap);
+        pmapLegend = addLegend(pmap);
+      }
+      const bn = baseName();
+      if (!pmapBase || pmapBase._name !== bn){
+        if (pmapBase) pmap.removeLayer(pmapBase);
+        pmapBase = baseLayers()[bn]; pmapBase._name = bn; pmapBase.addTo(pmap);
+      }
+      pmap.invalidateSize();
+      const r = drawMap(pmap, pmapLayer, pmapLegend, { mode: 'all', labels: $('mLabels').checked, endId, print: true });
+      $('printMapTitle').innerHTML = `Isälinjan taival<small>${r.path.map(n => esc(n.snp)).join(' → ')}</small>`;
+      await waitTiles(pmapBase, 5000);
+      await new Promise(r => setTimeout(r, 300));
+    }
+  } finally { $('busy').classList.remove('on'); }
+  window.print();
+};
+$('bSave').onclick = () => download('haplopuu.json', new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
+$('bLoad').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try{
+    const js = JSON.parse(await f.text());
+    if (!Array.isArray(js.nodes)) throw 0;
+    if (state.nodes.length && !confirm('Korvataanko nykyinen puu avattavalla tiedostolla?')) return;
+    state = { nodes: js.nodes, settings: Object.assign(state.settings, js.settings || {}) };
+    save(); syncSettings(); clearForm(null); refresh();
+  }catch(err){ alert('Tiedostoa ei voitu lukea (odotettiin tämän sovelluksen JSON-tiedostoa).'); }
+  e.target.value = '';
+};
+$('bSample').onclick = () => {
+  if (state.nodes.length && !confirm('Korvataanko nykyinen puu esimerkkidatalla?')) return;
+  const mk = (id, snp, parentId, age, color, region, lat, lng, alias='') => ({ id, snp, alias, parentId, age, ageErr: null, color, region, lat, lng, notes: 'Esimerkki – ikäarvio ja sijainti likimääräisiä.' });
+  state.nodes = [
+    mk('r',  'N-M231', null, 22000, '#1f4e8c', 'Itä-Aasia', 36.5, 104.0),
+    mk('a',  'N-M46',  'r',  14100, '#2980b9', 'Etelä-Siperia', 52.3, 104.3, 'M178 / Tat'),
+    mk('b',  'N-L708', 'a',  12000, '#2980b9', 'Etelä-Siperia', 55.0, 91.0),
+    mk('c',  'N-P298', 'b',   6400, '#8e44ad', 'Länsi-Siperia', 57.0, 73.0, 'L549'),
+    mk('u',  'N-Z1936','c',   4700, '#e67e22', 'Ural', 54.7, 55.9, 'CTS10082'),
+    mk('s',  'N-VL62', 'u',   3000, '#16a085', 'Savo', 62.9, 27.7),
+    mk('k',  'N-Z1941','u',   2900, '#16a085', 'Savo', 61.7, 29.5),
+    mk('d',  'N-L1026','c',   4600, '#c0392b', 'Volga', 56.3, 44.0, 'L392'),
+    mk('e',  'N-L550', 'd',   3700, '#c0392b', 'Itämeren alue', 58.3, 28.0),
+    mk('f',  'N-L1025','e',   2700, '#d4a017', 'Baltia', 55.2, 23.9),
+    mk('g',  'N-M2783','f',   2100, '#d4a017', 'Baltia', 56.9, 24.1),
+    mk('h',  'N-VL29', 'e',   2800, '#6ab04c', 'Suomenlahti', 59.4, 25.0),
+    mk('i',  'N-L1022','h',   1900, '#27ae60', 'Länsi-Suomi', 61.5, 23.8),
+    mk('j',  'N-Y5003','i',   1400, '#27ae60', 'Länsi-Suomi', 62.6, 22.3)
+  ];
+  state.settings.ownId = 'j';
+  $('mEnd').innerHTML = '';
+  save(); clearForm(null); refresh();
+};
+$('bClearAll').onclick = () => {
+  if (!state.nodes.length){ clearForm(null); return; }
+  if (!confirm(`Aloitetaanko uusi haplopuu? Kaikki ${state.nodes.length} varianttia poistetaan.`)) return;
+  if (confirm('Tallennetaanko nykyinen puu ensin varmuuskopioksi tiedostoon?\n\nOK = tallenna ensin, Peruuta = tyhjennä tallentamatta'))
+    download('haplopuu-varmuuskopio-' + new Date().toISOString().slice(0,10) + '.json', new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
+  state.nodes = [];
+  state.settings.ownId = null; delete state.settings.ownLabel;
+  endManual = false; $('mEnd').innerHTML = '';
+  save(); clearForm(null); refresh();
+  $('fSnp').focus();
+};
+function syncSettings(){
+  $('oBottom').checked = state.settings.rootBottom;
+  $('oTime').checked = state.settings.timeScale;
+  $('oRegions').checked = state.settings.regions;
+  $('oOwn').checked = state.settings.ownHi !== false;
+  $('oEdge').checked = state.settings.edgeLabels !== false;
+  $('oZoom').value = state.settings.zoom || 100;
+}
+
+/* ---------- Käynnistys ---------- */
+load(); syncSettings(); buildSwatches(); clearForm(null); refresh();
+</script>
+</body>
+</html>
