@@ -112,6 +112,37 @@
     radial-gradient(circle, #e5e2da 1px, transparent 1px) 0 0/18px 18px, var(--bg);}
   #treeSvg{width:100%;height:100%;cursor:grab;}
   #treeSvg.dragging{cursor:grabbing;}
+
+  /* Listanäkymä: kaikki henkilöt yhtenä taulukkona (vaihtoehto puunäkymälle, ks.
+     Sukupuunäkymä-valikko). Sarakkeiden järjestystä voi vaihtaa raahaamalla otsikkoa,
+     ja rivit lajitellaan otsikkoa klikkaamalla. */
+  #listViewWrap{position:absolute;inset:0;overflow:auto;background:var(--panel);display:none;}
+  #listTable{border-collapse:collapse;width:max-content;min-width:100%;font-size:12.5px;}
+  #listTable thead th{
+    position:sticky;top:0;z-index:2;background:var(--panel);
+    border-bottom:2px solid var(--panel-border);border-right:1px solid var(--panel-border);
+    padding:8px 11px;text-align:left;white-space:nowrap;font-weight:600;color:var(--text);
+    cursor:pointer;user-select:none;
+  }
+  #listTable thead th:hover{background:var(--accent-bg);}
+  #listTable thead th.th-dragging{opacity:.4;}
+  #listTable thead th.th-drag-over{box-shadow:inset 3px 0 0 var(--accent);}
+  #listTable thead th .sort-arrow{color:var(--accent);margin-left:4px;}
+  #listTable tbody td{
+    padding:6px 11px;border-bottom:1px solid #f0eee9;border-right:1px solid #f5f3ef;
+    white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;
+  }
+  #listTable tbody tr{cursor:pointer;}
+  #listTable tbody tr:hover{background:var(--accent-bg);}
+  #listTable tbody tr.active{background:var(--accent-bg);}
+  /* Varoituspalkki kun listanäkymässä näytetään vain osa henkilöistä (ks. LIST_ROW_LIMIT
+     renderListView():ssa) - iso, suodattamaton henkilömäärä (kymmeniä tuhansia) jumittaisi
+     selaimen jos koko joukko yritettäisiin piirtää taulukon riveiksi kerralla. */
+  .list-limit-notice{
+    display:none;background:var(--accent-bg);color:var(--accent);
+    border-bottom:1px solid var(--panel-border);
+    font-size:12.5px;padding:7px 14px;
+  }
   .tree-controls{
     position:absolute;top:10px;left:10px;
     background:var(--panel);border:1px solid var(--panel-border);
@@ -140,6 +171,25 @@
   .tree-controls-toggle:hover{background:var(--accent);}
   .tree-controls-toggle.hidden{display:none;}
   .zoom-controls{position:absolute;bottom:10px;left:10px;display:flex;gap:4px;}
+
+  /* Listanäkymässä asetuspaneeli (Otsikko/Sukupuunäkymä) EI saa kellua taulukon päällä
+     peittäen sen ylintä osaa (kuten puunäkymissä, joissa se kelluu kankaan päällä) -
+     sen sijaan se ankkuroituu taulukon YLÄPUOLELLE omaksi, täyden levyiseksi riviksi, ja
+     taulukolle varataan vastaava tila ylhäältä (ks. #listViewWrap top alla), jotta
+     ylimmätkin rivit pysyvät aina näkyvissä otsikon takaa riippumatta siitä onko
+     asetuspaneeli auki. */
+  #treeWrap.list-mode .tree-controls{
+    position:absolute;top:0;left:0;right:0;
+    max-width:none;border-radius:0;
+    border-left:none;border-right:none;border-top:none;
+    flex-direction:row;flex-wrap:wrap;align-items:center;gap:14px;
+    padding:9px 14px 9px 46px;
+  }
+  #treeWrap.list-mode .tree-controls .row{flex:0 0 auto;}
+  #treeWrap.list-mode .tree-controls .row input#treeNameInput{width:180px;flex:none;}
+  #treeWrap.list-mode .tree-controls .row select#orientSelect{width:150px;flex:none;}
+  #treeWrap.list-mode .tree-controls-close{top:9px;right:10px;}
+  #treeWrap.list-mode.controls-open #listViewWrap{top:52px;}
 
   /* Koko näytön tila: piilottaa nimilistan ja sivun oman yläpalkin, ja yhdessä
      Fullscreen APIn kanssa myös selaimen oman otsikkopalkin/toolbarin. */
@@ -281,6 +331,11 @@
       overflow:visible !important; background:#fff !important;
     }
     body.printing #treeSvg{ width:100% !important; height:auto !important; cursor:default !important; }
+    body.printing #listViewWrap{
+      position:static !important; width:100% !important; height:auto !important;
+      overflow:visible !important; background:#fff !important;
+    }
+    body.printing #listTable thead th{ position:static !important; }
   }
 </style>
 </head>
@@ -331,6 +386,13 @@
 
   <div id="treeWrap">
     <svg id="treeSvg"><g id="viewport"></g></svg>
+    <div id="listViewWrap">
+      <div id="listLimitNotice" class="list-limit-notice"></div>
+      <table id="listTable">
+        <thead><tr id="listTableHead"></tr></thead>
+        <tbody id="listTableBody"></tbody>
+      </table>
+    </div>
     <div id="emptyState">
       <div style="font-size:40px;">🌳</div>
       <div>Sukupuu on vielä tyhjä.<br>Aloita lisäämällä ensimmäinen henkilö.</div>
@@ -343,7 +405,7 @@
         <label style="width:70px;">Otsikko</label>
         <input type="text" id="treeNameInput" placeholder="Sukupuu" style="flex:1;">
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <label style="width:70px;">Juuri</label>
         <select id="rootSelect" style="flex:1;"></select>
       </div>
@@ -353,29 +415,30 @@
           <option value="vertical">Pystysuunta</option>
           <option value="horizontal">Vaakasuunta</option>
           <option value="fan">Viuhkanäkymä</option>
+          <option value="list">Listanäkymä</option>
         </select>
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <input type="checkbox" id="showAncestorsChk" checked style="width:auto;">
         <label style="width:auto;">Näytä edelliset sukupolvet</label>
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <label style="width:70px;">Sukupolvia ylös</label>
         <input type="number" id="genUp" min="0" max="10" value="2" style="width:55px;">
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <label style="width:70px;">Sukupolvia alas</label>
         <input type="number" id="genDown" min="0" max="10" value="2" style="width:55px;">
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <input type="checkbox" id="hideSiblingsChk" style="width:auto;">
         <label style="width:auto;">Piilota sisarukset (kaikki sukupolvet)</label>
       </div>
-      <div class="row">
+      <div class="row tree-only-row">
         <input type="checkbox" id="hideOtherPartnersChk" style="width:auto;">
         <label style="width:auto;">Piilota muut kumppanit</label>
       </div>
-      <div class="muted" id="perfSafeguardHint" style="font-size:11px;line-height:1.4;margin:-4px 0 4px;display:none;">
+      <div class="muted tree-only-row" id="perfSafeguardHint" style="font-size:11px;line-height:1.4;margin:-4px 0 4px;display:none;">
         Pakotettu päälle nopeamman piirron vuoksi, koska sukupolvia näytetään yli 2.
       </div>
     </div>
@@ -407,12 +470,12 @@
       <div class="form-grid">
         <div><label>Etunimi(et)</label><input id="f-etunimi"></div>
         <div><label>Syntymäsukunimi</label><input id="f-sukunimi"></div>
-        <div class="full"><label>Sukunimi kuollessa <span class="muted">(jos eri kuin syntymäsukunimi)</span></label><input id="f-sukunimi-kuollessa" placeholder="esim. avioliiton kautta saatu sukunimi"></div>
+        <div class="full"><label>Sukunimi (käytössä) <span class="muted">(jos eri kuin syntymäsukunimi)</span></label><input id="f-sukunimi-kuollessa" placeholder="esim. avioliiton kautta saatu sukunimi"></div>
         <div class="full"><label>Patronyymi / matronyymi <span class="muted">(esim. Erikinpoika, Juhontytär)</span></label><input id="f-patronyymi" placeholder="esim. Erikinpoika"></div>
         <div class="full"><label>Sukupuussa ja listoissa näytettävä sukunimi</label>
           <select id="f-nimivalinta">
             <option value="synt">Syntymäsukunimi</option>
-            <option value="kuollessa">Sukunimi kuollessa</option>
+            <option value="kuollessa">Sukunimi (käytössä)</option>
             <option value="patronyymi">Patronyymi/matronyymi</option>
           </select>
         </div>
@@ -566,6 +629,13 @@ let ui = {
   // pakotus (ks. updatePerfSafeguard) ei enää ole voimassa.
   userHideSiblings: false,
   userHideOtherPartners: false,
+  // Listanäkymän (ks. LIST_COLUMNS/renderListView) sarakejärjestys ja lajittelu -
+  // listColumnOrder asetetaan oletukseksi (kaikki sarakkeet niiden luontijärjestyksessä)
+  // vasta ensimmäisellä renderListView()-kutsulla, koska LIST_COLUMNS määritellään
+  // vasta myöhemmin tiedostossa.
+  listColumnOrder: null,
+  listSortKey: 'sukunimi',
+  listSortDir: 'asc',
   zoom: 1,
   panX: 0,
   panY: 0,
@@ -698,19 +768,31 @@ function getUiSettingsSnapshot(){
     genDown: ui.genDown,
     showAncestors: ui.showAncestors,
     hideSiblings: ui.hideSiblings,
-    hideOtherPartners: ui.hideOtherPartners
+    hideOtherPartners: ui.hideOtherPartners,
+    listColumnOrder: ui.listColumnOrder,
+    listSortKey: ui.listSortKey,
+    listSortDir: ui.listSortDir
   };
 }
 function applyUiSettingsFromData(data){
   const s = data && data.uiSettings;
   if(!s) return;
   if(s.rootId && personById(s.rootId)) ui.rootId = s.rootId;
-  if(s.orientation === 'vertical' || s.orientation === 'horizontal' || s.orientation === 'fan') ui.orientation = s.orientation;
+  if(s.orientation === 'vertical' || s.orientation === 'horizontal' || s.orientation === 'fan' || s.orientation === 'list') ui.orientation = s.orientation;
   if(Number.isFinite(s.genUp)) ui.genUp = Math.max(0, s.genUp);
   if(Number.isFinite(s.genDown)) ui.genDown = Math.max(0, s.genDown);
   if(typeof s.showAncestors === 'boolean') ui.showAncestors = s.showAncestors;
   if(typeof s.hideSiblings === 'boolean') ui.hideSiblings = s.hideSiblings;
   if(typeof s.hideOtherPartners === 'boolean') ui.hideOtherPartners = s.hideOtherPartners;
+  // LIST_COLUMNS määritellään vasta myöhemmin tiedostossa, mutta tämä funktio kutsutaan
+  // vasta tiedoston AVAAMISEN yhteydessä (käyttäjän toimesta), jolloin koko skripti on
+  // jo suoritettu kertaalleen läpi ja LIST_COLUMNS on olemassa.
+  if(Array.isArray(s.listColumnOrder) && typeof LIST_COLUMNS !== 'undefined'){
+    const valid = s.listColumnOrder.filter(k=>LIST_COLUMNS.some(c=>c.key===k));
+    if(valid.length) ui.listColumnOrder = valid;
+  }
+  if(typeof s.listSortKey === 'string') ui.listSortKey = s.listSortKey;
+  if(s.listSortDir === 'asc' || s.listSortDir === 'desc') ui.listSortDir = s.listSortDir;
   // Tallennetun tiedoston asetukset ovat myös uusi käyttäjän oma "muistettu" valinta, jota
   // käytetään kun sukupolvimäärän pakotus (updatePerfSafeguard) ei ole voimassa.
   ui.userHideSiblings = ui.hideSiblings;
@@ -734,6 +816,18 @@ function updatePerfSafeguard(){
   return forced;
 }
 
+/* Listanäkymässä sukupolvi-/esivanhempi-/sisarusasetukset (Juuri, Sukupolvia ylös/alas,
+   Piilota sisarukset jne.) eivät koske mitään, koska listanäkymä näyttää KAIKKI
+   henkilöt yhtenä taulukkona riippumatta juuresta tai sukupolvirajauksesta - siksi ne
+   piilotetaan näkyvistä (ks. .tree-only-row), jotta asetuspaneeli ei näytä turhia,
+   vaikutuksettomia kontrolleja. */
+function updateTreeControlsForOrientation(){
+  const isList = ui.orientation === 'list';
+  document.querySelectorAll('.tree-only-row').forEach(el=>{ el.style.display = isList ? 'none' : ''; });
+  const treeWrap = document.getElementById('treeWrap');
+  if(treeWrap) treeWrap.classList.toggle('list-mode', isList);
+}
+
 function syncUiControlsFromState(){
   const rootSelect = document.getElementById('rootSelect');
   const orientSelect = document.getElementById('orientSelect');
@@ -745,6 +839,7 @@ function syncUiControlsFromState(){
   if(genUpInput){ genUpInput.value = ui.genUp; genUpInput.disabled = !ui.showAncestors; }
   if(genDownInput) genDownInput.value = ui.genDown;
   updatePerfSafeguard();
+  updateTreeControlsForOrientation();
   // rootSelect-valikon arvo asetetaan renderRootSelect():ssa, joka kunnioittaa ui.rootId:tä
   const treeNameInput = document.getElementById('treeNameInput');
   if(treeNameInput) treeNameInput.value = state.treeName || 'Sukupuu';
@@ -2661,6 +2756,169 @@ function renderFanChart(fan){
   });
 }
 
+/* ---------------------------------------------------------------------
+   LISTANÄKYMÄ: kaikki henkilöt yhtenä sarakejärjestettävänä/lajiteltavana taulukkona.
+   Sarakkeiden MÄÄRITTELYT (otsikko + arvon poiminta henkilöstä). Päivämääräsarakkeille
+   annetaan lisäksi 'dateKey', jota käytetään lajitteluun pelkän tekstivertailun sijaan
+   (ks. sukukirjaPvmAvain - sama päivämääräparsinta kuin sukukirjan aikajärjestyksessä),
+   jotta esim. "5.3.1920" ja "12.1850" lajittuvat oikeaan aikajärjestykseen eivätkä
+   aakkosjärjestykseen.
+--------------------------------------------------------------------- */
+// Enimmäismäärä rivejä jotka piirretään kerralla silloin kun hakuehtoja ei ole
+// annettu (ks. renderListView) - estää selaimen jumiutumisen todella suurilla
+// (esim. kymmeniä tuhansia henkilöitä käsittävillä) suodattamattomilla sukupuilla.
+const LIST_ROW_LIMIT = 1000;
+
+const LIST_COLUMNS = [
+  {key:'etunimi', label:'Etunimi(et)', get:p=>p.etunimi||''},
+  {key:'sukunimi', label:'Sukunimi', get:p=>displaySukunimi(p)},
+  {key:'syntSukunimi', label:'Syntymäsukunimi', get:p=>p.sukunimi||''},
+  {key:'sukunimiKuollessa', label:'Sukunimi (käytössä)', get:p=>p.sukunimiKuollessa||''},
+  {key:'patronyymi', label:'Patronyymi/matronyymi', get:p=>p.patronyymi||''},
+  {key:'sukupuoli', label:'Sukupuoli', get:p=>p.sukupuoli==='mies'?'Mies':(p.sukupuoli==='nainen'?'Nainen':'')},
+  {key:'syntAika', label:'Syntymäaika', get:p=>p.syntAika||'', dateKey:p=>sukukirjaPvmAvain(p.syntAika)},
+  {key:'syntPaikka', label:'Syntymäpaikka', get:p=>p.syntPaikka||''},
+  {key:'kuolAika', label:'Kuolinaika', get:p=>p.kuolAika||'', dateKey:p=>sukukirjaPvmAvain(p.kuolAika)},
+  {key:'kuolPaikka', label:'Kuolinpaikka', get:p=>p.kuolPaikka||''},
+  {key:'hautaAika', label:'Hautausaika', get:p=>p.hautaAika||'', dateKey:p=>sukukirjaPvmAvain(p.hautaAika)},
+  {key:'hautaPaikka', label:'Hautauspaikka', get:p=>p.hautaPaikka||''},
+  {key:'ammatti', label:'Ammatti', get:p=>p.ammatti||''},
+  {key:'vanhemmat', label:'Vanhemmat', get:p=>(p.parentIds||[]).map(pid=>fullName(personById(pid))).filter(Boolean).join(' ja ')},
+  {key:'puolisot', label:'Puolisot', get:p=>spousesOf(p.id).map(s=>fullName(s.person)).join(', ')},
+  {key:'lapset', label:'Lapset', get:p=>childrenOf(p.id).map(c=>fullName(c)).join(', ')},
+  {key:'yDna', label:'Y-DNA', get:p=>p.yDna||''},
+  {key:'mtDna', label:'mtDNA', get:p=>p.mtDna||''},
+  {key:'kuvaus', label:'Kuvaus / muistiinpanot', get:p=>(p.kuvaus||'').replace(/\s+/g,' ').trim()}
+];
+
+function renderListView(){
+  if(!ui.listColumnOrder) ui.listColumnOrder = LIST_COLUMNS.map(c=>c.key);
+
+  // Sama 4-kentän haku kuin sivupalkin henkilölistassa (ks. readSearch4/personMatches4
+  // yllä), jotta listanäkymä ja sivupalkki näyttävät aina saman rajatun joukon henkilöitä.
+  const q = readSearch4('sq-');
+  const filtered = search4Empty(q) ? state.persons.slice() : state.persons.filter(p=>personMatches4(p,q));
+
+  const colByKey = {};
+  LIST_COLUMNS.forEach(c=>{ colByKey[c.key] = c; });
+  const cols = ui.listColumnOrder.map(k=>colByKey[k]).filter(Boolean);
+  LIST_COLUMNS.forEach(c=>{ if(!cols.includes(c)) cols.push(c); }); // esim. vanhasta tallennuksesta puuttuva uusi sarake
+
+  const sortCol = colByKey[ui.listSortKey] || colByKey['sukunimi'];
+  const dir = ui.listSortDir === 'desc' ? -1 : 1;
+  const sorted = filtered.slice().sort((a,b)=>{
+    if(sortCol.dateKey){
+      const av = sortCol.dateKey(a), bv = sortCol.dateKey(b);
+      const aMissing = !isFinite(av), bMissing = !isFinite(bv);
+      // Henkilöt joilta puuttuu päivämäärä asettuvat AINA listan loppuun, kummassakin
+      // lajittelusuunnassa - muuten ne "hyppäisivät" järjestyksen kärkeen pelkästään
+      // siksi, että puuttuvaa arvoa merkitään sisäisesti suurimmalla mahdollisella
+      // lukuarvolla (Infinity), mikä näyttäisi käyttäjälle oudolta/virheelliseltä.
+      if(aMissing && bMissing) return 0;
+      if(aMissing) return 1;
+      if(bMissing) return -1;
+      return (av-bv)*dir;
+    }
+    const av = normSearch(sortCol.get(a)), bv = normSearch(sortCol.get(b));
+    if(av < bv) return -1*dir;
+    if(av > bv) return 1*dir;
+    return 0;
+  });
+
+  // Isolla sukupuulla (kymmeniä tuhansia henkilöitä) KOKO suodattamattoman joukon
+  // piirtäminen taulukon riveiksi kerralla (tuhansia <tr>-elementtejä, kukin useita
+  // <td>-soluja, plus yhtä monta klikkauskuuntelijaa) jumittaa selaimen pahasti. Siksi
+  // rivimäärä rajataan LIST_ROW_LIMIT:iin silloin kun hakuehtoja EI ole syötetty -
+  // heti kun käyttäjä rajaa joukkoa yläpalkin haulla, koko (pienempi) tulosjoukko
+  // näytetään normaalisti ilman rajoitusta.
+  const noFilter = search4Empty(q);
+  const limited = noFilter && sorted.length > LIST_ROW_LIMIT;
+  const rowsToShow = limited ? sorted.slice(0, LIST_ROW_LIMIT) : sorted;
+
+  const notice = document.getElementById('listLimitNotice');
+  if(notice){
+    if(limited){
+      notice.style.display = 'block';
+      notice.textContent = `Näytetään ensimmäiset ${LIST_ROW_LIMIT} / ${sorted.length} henkilöä - rajaa hakua yläpalkin kentillä (Etunimi/Sukunimi/Synt.v./Synt.paikka) nähdäksesi muut.`;
+    } else {
+      notice.style.display = 'none';
+    }
+  }
+
+  const headRow = document.getElementById('listTableHead');
+  headRow.innerHTML = cols.map(c=>{
+    const arrow = ui.listSortKey === c.key ? (ui.listSortDir === 'desc' ? ' ▼' : ' ▲') : '';
+    return `<th draggable="true" data-key="${c.key}" title="Raahaa järjestääksesi, klikkaa lajitellaksesi">${escapeHtml(c.label)}<span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+
+  const body = document.getElementById('listTableBody');
+  body.innerHTML = rowsToShow.map(p=>{
+    const tds = cols.map(c=>{
+      const v = c.get(p) || '';
+      return `<td title="${escapeHtml(v)}">${escapeHtml(v)}</td>`;
+    }).join('');
+    return `<tr data-id="${p.id}" class="${p.id===ui.selectedPersonId?'active':''}">${tds}</tr>`;
+  }).join('') || `<tr><td colspan="${cols.length}" class="muted" style="padding:14px;white-space:normal;">Ei tuloksia.</td></tr>`;
+
+  document.getElementById('personCount').textContent = search4Empty(q)
+    ? state.persons.length + ' henkilöä'
+    : sorted.length + ' / ' + state.persons.length + ' henkilöä';
+
+  body.querySelectorAll('tr[data-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openEditor(row.dataset.id));
+  });
+
+  wireListHeaderEvents();
+}
+
+// Otsikkorivin raahaus (järjestyksen vaihto) ja klikkaus (lajittelu). Natiivi HTML5
+// drag&drop -rajapinta: dragstart merkitsee raahattavan sarakkeen, drop toisessa
+// otsikossa vaihtaa ui.listColumnOrder-järjestyksen ja piirtää taulukon uudelleen.
+// Pelkkä klikkaus (ilman raahausta) ei koskaan laukaise dragstart/drop-tapahtumia,
+// joten lajittelu ja järjestyksen vaihto eivät voi sekoittua keskenään.
+function wireListHeaderEvents(){
+  const headRow = document.getElementById('listTableHead');
+  let dragKey = null;
+  headRow.querySelectorAll('th').forEach(th=>{
+    th.addEventListener('dragstart', (e)=>{
+      dragKey = th.dataset.key;
+      th.classList.add('th-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragKey); // Firefox vaatii datan asettamisen
+    });
+    th.addEventListener('dragend', ()=>{
+      th.classList.remove('th-dragging');
+      headRow.querySelectorAll('th').forEach(x=>x.classList.remove('th-drag-over'));
+    });
+    th.addEventListener('dragover', (e)=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      th.classList.add('th-drag-over');
+    });
+    th.addEventListener('dragleave', ()=>{ th.classList.remove('th-drag-over'); });
+    th.addEventListener('drop', (e)=>{
+      e.preventDefault();
+      th.classList.remove('th-drag-over');
+      const targetKey = th.dataset.key;
+      if(!dragKey || dragKey === targetKey) return;
+      const order = ui.listColumnOrder.slice();
+      const fromIdx = order.indexOf(dragKey);
+      const toIdx = order.indexOf(targetKey);
+      if(fromIdx < 0 || toIdx < 0) return;
+      order.splice(fromIdx, 1);
+      order.splice(toIdx, 0, dragKey);
+      ui.listColumnOrder = order;
+      renderListView();
+    });
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.key;
+      if(ui.listSortKey === key){ ui.listSortDir = ui.listSortDir === 'asc' ? 'desc' : 'asc'; }
+      else { ui.listSortKey = key; ui.listSortDir = 'asc'; }
+      renderListView();
+    });
+  });
+}
+
 let lastLayoutNodes = [];
 let lastFanBounds = null;
 
@@ -2668,15 +2926,38 @@ function renderTree(){
   const svg = document.getElementById('treeSvg');
   const viewport = document.getElementById('viewport');
   const empty = document.getElementById('emptyState');
+  const listWrap = document.getElementById('listViewWrap');
+  const zoomControls = document.querySelector('.zoom-controls');
+
+  updateTreeControlsForOrientation();
 
   if(!state.persons.length){
     empty.style.display = 'flex';
     viewport.innerHTML = '';
+    svg.style.display = '';
+    listWrap.style.display = 'none';
+    if(zoomControls) zoomControls.style.display = '';
     lastLayoutNodes = [];
     lastFanBounds = null;
     return;
   }
   empty.style.display = 'none';
+
+  // Listanäkymä: kaikki henkilöt yhtenä sarakejärjestettävänä/lajiteltavana taulukkona
+  // (ks. renderListView) - ei riipu juuresta/sukupolvirajauksista kuten muut näkymät,
+  // joten koko loppu funktio (SVG-puun layout/piirto) ohitetaan kokonaan.
+  if(ui.orientation === 'list'){
+    svg.style.display = 'none';
+    if(zoomControls) zoomControls.style.display = 'none';
+    listWrap.style.display = 'block';
+    lastLayoutNodes = [];
+    lastFanBounds = null;
+    renderListView();
+    return;
+  }
+  svg.style.display = '';
+  if(zoomControls) zoomControls.style.display = '';
+  listWrap.style.display = 'none';
 
   const effectiveUp = ui.showAncestors ? ui.genUp : 0;
 
@@ -2760,6 +3041,7 @@ function applyTransform(){
 }
 
 function fitToView(){
+  if(ui.orientation === 'list') return; // listanäkymä vierittyy normaalisti, ei zoomia/panorointia
   if(ui.orientation === 'fan'){
     if(!lastFanBounds) return;
   } else if(!lastLayoutNodes.length){
@@ -2816,6 +3098,21 @@ function fitToView(){
    TULOSTUS
 --------------------------------------------------------------------- */
 function printTree(){
+  if(ui.orientation === 'list'){
+    if(!state.persons.length){ alert('Ei tulostettavaa - lisää ensin henkilöitä.'); return; }
+    document.body.classList.add('printing');
+    let restoredList = false;
+    const restoreList = ()=>{
+      if(restoredList) return;
+      restoredList = true;
+      document.body.classList.remove('printing');
+      window.removeEventListener('afterprint', restoreList);
+    };
+    window.addEventListener('afterprint', restoreList);
+    setTimeout(()=>{ window.print(); }, 50);
+    setTimeout(restoreList, 4000);
+    return;
+  }
   const hasContent = ui.orientation === 'fan' ? !!lastFanBounds : lastLayoutNodes.length>0;
   if(!hasContent){ alert('Ei tulostettavaa sukupuuta - valitse ensin lähtöhenkilö.'); return; }
 
@@ -3090,7 +3387,11 @@ document.getElementById('btnShrinkKuvaus').addEventListener('click', ()=>{
 document.getElementById('btnWikiSyntpaikka').addEventListener('click', ()=>{
   const paikka = document.getElementById('f-syntpaikka').value.trim();
   if(!paikka){ alert('Kirjoita ensin syntymäpaikka.'); return; }
-  const wikiTitle = paikka.trim().replace(/\s+/g, '_');
+  // Syntymäpaikka voi olla muotoa "Noormarkku, Lassila" (paikkakunta, kylä/talo) -
+  // pilkun jälkeinen tarkenne ei yleensä ole oma Wikipedia-artikkeli, joten haetaan
+  // vain pilkkua edeltävä paikkakunnan nimi.
+  const paikkakunta = paikka.split(',')[0].trim();
+  const wikiTitle = paikkakunta.replace(/\s+/g, '_');
   const url = 'https://fi.wikipedia.org/wiki/' + encodeURIComponent(wikiTitle);
   window.open(url, '_blank', 'noopener');
 });
@@ -3099,7 +3400,10 @@ document.getElementById('btnWikiSyntpaikka').addEventListener('click', ()=>{
 document.getElementById('btnMapSyntpaikka').addEventListener('click', ()=>{
   const paikka = document.getElementById('f-syntpaikka').value.trim();
   if(!paikka){ alert('Kirjoita ensin syntymäpaikka.'); return; }
-  const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(paikka);
+  // Sama pilkkua edeltävä paikkakunnan nimi kuin Wikipedia-haussa yllä - kylän/talon
+  // nimi pilkun jälkeen sekoittaisi kartan haun turhaan.
+  const paikkakunta = paikka.split(',')[0].trim();
+  const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(paikkakunta);
   window.open(url, '_blank', 'noopener');
 });
 
@@ -3561,7 +3865,7 @@ document.getElementById('btnEmptyAdd').addEventListener('click', openEditorForNe
 (function(){
   let t=null;
   ['sq-etu','sq-suku','sq-vuosi','sq-paikka'].forEach(id=>{
-    document.getElementById(id).addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(renderPersonList, 150); });
+    document.getElementById(id).addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(()=>{ renderPersonList(); if(ui.orientation==='list') renderListView(); }, 150); });
   });
 })();
 
@@ -3590,10 +3894,12 @@ document.getElementById('hideOtherPartnersChk').addEventListener('change', (e)=>
 document.getElementById('treeControlsToggle').addEventListener('click', ()=>{
   document.getElementById('treeControlsPanel').classList.add('open');
   document.getElementById('treeControlsToggle').classList.add('hidden');
+  document.getElementById('treeWrap').classList.add('controls-open');
 });
 document.getElementById('treeControlsClose').addEventListener('click', ()=>{
   document.getElementById('treeControlsPanel').classList.remove('open');
   document.getElementById('treeControlsToggle').classList.remove('hidden');
+  document.getElementById('treeWrap').classList.remove('controls-open');
 });
 
 document.getElementById('btnSaveFile').addEventListener('click', ()=>saveToFile(false));
