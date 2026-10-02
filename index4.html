@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="fi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sukukirjan nopeutus</title>
+<style>
+body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#222;background:#fff;line-height:1.5}
+h1{font-size:1.5em;margin-bottom:.2em}
+#drop{border:2px dashed #888;border-radius:10px;padding:36px;text-align:center;cursor:pointer;margin:20px 0}
+#drop.over{background:#eef5ff;border-color:#2a6fd6}
+#tila{white-space:pre-line;margin:12px 0}
+a.btn{display:inline-block;background:#2a6fd6;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600}
+.pieni{font-size:.9em;color:#555}
+.virhe{color:#b00020}
+</style></head><body>
+<h1>Sukukirjan nopeutus</h1>
+<p>Muuntaa sukuohjelman tuottaman HTML-sukukirjan (esim. <i>sukukirja2024_w.htm</i>) nopeasti toimivaksi versioksi. Ulkoasu ja linkit säilyvät ennallaan; taulut ja hakemisto piirretään vasta kun niitä tarvitaan, ja nimet indeksoidaan hakua varten.</p>
+<div id="drop">Pudota sukukirjan .htm-tiedosto tähän<br><span class="pieni">tai napsauta valitaksesi tiedoston</span></div>
+<input type="file" id="tiedosto" accept=".htm,.html" hidden>
+<div id="tila"></div>
+<div id="lataa"></div>
+<p class="pieni">Muunnos tehdään kokonaan omassa selaimessasi – tiedostoa ei lähetetä minnekään. Tallenna valmis tiedosto samaan kansioon alkuperäisen kanssa, jotta <i>Paluu</i>-linkki (index.htm) toimii.</p>
+<script type="text/plain" id="runtime">(function () {
+  'use strict';
+  var D = JSON.parse(document.getElementById('sk-data').textContent);
+  var kirja = document.getElementById('sk-kirja');
+  var ixTable = document.getElementById('sk-ix');
+  var ph = [], ixSec = [];
+
+  // ---------- Taulut: kevyet paikkamerkit, sisältö piirretään vasta kun tarvitaan ----------
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < D.N.length; i++) {
+    var d = document.createElement('div');
+    d.className = 'sk-ph';
+    d.id = 'Taulu ' + D.N[i];
+    d.style.height = D.est[i] + 'px';
+    d.skI = i;
+    frag.appendChild(d);
+    ph.push(d);
+  }
+  kirja.appendChild(frag);
+
+  function esc(s) { return s; } // hakemiston tekstit ovat valmiiksi HTML:ää
+  function rowHtml(r) {
+    if (typeof r === 'string') return r;
+    var refs = r[2] ? r[2].split(',').map(function (n) {
+      return '<A HREF = "#Taulu ' + n + '">' + n + '</A>';
+    }).join(', ') : '';
+    return '<TR><TD valign="top"><FONT SIZE="2">' + esc(r[0]) + '</FONT></TD><TD valign="top"><FONT SIZE="2">' +
+      esc(r[1]) + '</FONT></TD><TD><FONT SIZE="2">' + refs + '</FONT></TD></TR>';
+  }
+
+  // ---------- Hakemisto: yksi tbody per kirjain ----------
+  D.sections.forEach(function (s, k) {
+    var tb = document.createElement('tbody');
+    if (s.id) tb.id = s.id;
+    tb.skK = k;
+    tb.innerHTML = '<tr><td colspan="3" style="height:' + Math.max(20, (s.rows.length + (s.head ? 1 : 0)) * 17) + 'px"></td></tr>';
+    ixTable.appendChild(tb);
+    ixSec.push(tb);
+  });
+
+  function render(el) {
+    if (!el || el.skDone) return;
+    el.skDone = true;
+    if (el.skI !== undefined) {
+      el.innerHTML = D.T[el.skI];
+      el.style.height = '';
+    } else {
+      var s = D.sections[el.skK];
+      el.innerHTML = (s.head || '') + s.rows.map(rowHtml).join('');
+    }
+    io.unobserve(el);
+  }
+
+  // Piirrä näkymän lähellä olevat. Oma vieritysankkuri: näkymän yläreunassa oleva osa pysyy paikallaan,
+  // vaikka sen yläpuolelle piirtyvien taulujen todellinen korkeus poikkeaa arviosta.
+  var all = null;
+  function topAnchor() {
+    if (!all) all = ph.concat(ixSec);
+    var lo = 0, hi = all.length - 1, ans = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (all[mid].getBoundingClientRect().bottom > 0) { ans = mid; hi = mid - 1; } else lo = mid + 1; }
+    return ans < 0 ? null : all[ans];
+  }
+  var io = new IntersectionObserver(function (entries) {
+    var todo = [];
+    for (var j = 0; j < entries.length; j++) if (entries[j].isIntersecting && !entries[j].target.skDone) todo.push(entries[j].target);
+    if (!todo.length) return;
+    var anc = topAnchor(), t0 = anc ? anc.getBoundingClientRect().top : 0;
+    todo.forEach(render);
+    if (anc) { var dy = anc.getBoundingClientRect().top - t0; if (Math.abs(dy) > 0.5) window.scrollBy(0, dy); }
+  }, { rootMargin: '1500px 0px 1500px 0px' });
+  ph.forEach(function (p) { io.observe(p); });
+  ixSec.forEach(function (t) { io.observe(t); });
+
+  // Hakemiston sarakeleveydet vakioiksi koko aineiston pisimmän tekstin mukaan
+  function fixColumns() {
+    try {
+      var first = ixSec[0]; render(first);
+      var f = first.querySelector('font'); if (!f) return;
+      var cs = getComputedStyle(f);
+      var ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      var w = [0, 0, 0], strip = /<[^>]*>/g;
+      D.sections.forEach(function (s) {
+        s.rows.forEach(function (r) {
+          if (typeof r === 'string') return;
+          w[0] = Math.max(w[0], ctx.measureText(r[0]).width);
+          w[1] = Math.max(w[1], ctx.measureText(r[1].replace(strip, '')).width);
+          w[2] = Math.max(w[2], ctx.measureText(r[2].replace(/,/g, ', ')).width);
+        });
+      });
+      var avail = (ixTable.parentNode.clientWidth || document.body.clientWidth) - 20;
+      if (w[0] + w[1] + w[2] + 18 > avail) w[2] = Math.max(40, avail - w[0] - w[1] - 18);
+      if (w[0] + w[1] + w[2] + 18 > avail) return;
+      var cols = ixTable.querySelectorAll('col');
+      for (var c = 0; c < 3; c++) cols[c].style.width = Math.ceil(w[c] + 4) + 'px';
+    } catch (err) { }
+  }
+  fixColumns();
+
+  // ---------- Linkit ja ankkurit ----------
+  function findTarget(name) {
+    return document.getElementById(name) || document.getElementsByName(name)[0] || null;
+  }
+  function goTo(name) {
+    var el = findTarget(name);
+    if (!el) return false;
+    if (el.skI !== undefined) {
+      for (var k = el.skI; k < Math.min(el.skI + 4, ph.length); k++) render(ph[k]);
+    } else if (el.skK !== undefined) {
+      render(el); if (ixSec[el.skK + 1]) render(ixSec[el.skK + 1]);
+    }
+    el.scrollIntoView();
+    return true;
+  }
+  function hashName() {
+    var h = location.hash.slice(1);
+    try { h = decodeURIComponent(h); } catch (e) { }
+    return h;
+  }
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href]');
+    if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+    var h = a.getAttribute('href');
+    if (!h || h.charAt(0) !== '#') return;
+    var name = h.slice(1).trim();
+    if (!findTarget(name)) return;
+    ev.preventDefault();
+    if (hashName() !== name) history.pushState(null, '', '#' + encodeURIComponent(name));
+    goTo(name);
+  });
+  window.addEventListener('popstate', function () { var n = hashName(); if (n) goTo(n); else window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', function () { var n = hashName(); if (n) goTo(n); });
+  if (location.hash) { var n0 = hashName(); setTimeout(function () { goTo(n0); }, 0); }
+
+  // Tulostus: piirrä kaikki ennen tulostusta
+  window.addEventListener('beforeprint', function () {
+    ph.forEach(render); ixSec.forEach(render);
+  });
+
+  // ---------- Haku (indeksoitu) ----------
+  var inp = document.getElementById('sk-haku'), out = document.getElementById('sk-tulos'), info = document.getElementById('sk-info');
+  if (!inp) return;
+  var nameIdx = null, textIdx = null;
+  function norm(s) { return s.toLowerCase().replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' '); }
+  function buildNameIdx() {
+    nameIdx = [];
+    D.sections.forEach(function (s) {
+      s.rows.forEach(function (r) {
+        if (typeof r === 'string') return;
+        nameIdx.push({ k: norm(r[0] + ' ' + r[1]), r: r });
+      });
+    });
+  }
+  function buildTextIdx() { textIdx = D.T.map(norm); }
+  function textHas(ph) { if (!textIdx) buildTextIdx(); for (var j = 0; j < textIdx.length; j++) if (textIdx[j].indexOf(ph) >= 0) return true; return false; }
+
+  var timer = null;
+  inp.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(search, 180); });
+  inp.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') {
+      var v = inp.value.trim();
+      if (/^\d+$/.test(v)) { goTo('Taulu ' + v); }
+      else { var a = out.querySelector('a[href^="#Taulu"]'); if (a) goTo(a.getAttribute('href').slice(1)); }
+    } else if (ev.key === 'Escape') { inp.value = ''; search(); }
+  });
+
+  function search() {
+    var v = inp.value.trim();
+    if (!v) { out.style.display = 'none'; out.innerHTML = ''; info.textContent = ''; return; }
+    var html = '';
+    if (/^\d+$/.test(v)) {
+      var ok = findTarget('Taulu ' + v);
+      html = ok ? '<font size="2"><A HREF = "#Taulu ' + v + '">Taulu ' + v + '</A> (Enter)</font>' : '<font size="2">Taulua ' + v + ' ei ole.</font>';
+      info.textContent = '';
+    } else {
+      if (!nameIdx) buildNameIdx();
+      var terms = norm(v).split(' ').filter(Boolean);
+      var hits = [], MAX = 300;
+      for (var i = 0; i < nameIdx.length; i++) {
+        var k = nameIdx[i].k, ok2 = true;
+        for (var t = 0; t < terms.length; t++) if (k.indexOf(terms[t]) < 0) { ok2 = false; break; }
+        if (ok2) hits.push(nameIdx[i].r);
+      }
+      html += '<font size="2"><b>Hakemisto: ' + hits.length + ' nimeä</b>' + (hits.length > MAX ? ' (näytetään ' + MAX + ')' : '') + '</font>';
+      if (hits.length) html += '<TABLE>' + hits.slice(0, MAX).map(rowHtml).join('') + '</TABLE>';
+      // Vapaa tekstihaku tauluista (paikat, ammatit, lisätiedot ...)
+      var phrase = norm(v);
+      if (phrase.length >= 3 && !(hits.length && !textHas(phrase))) {
+        if (!textIdx) buildTextIdx();
+        var th = [];
+        for (var j = 0; j < textIdx.length; j++) if (textIdx[j].indexOf(phrase) >= 0) th.push(D.N[j]);
+        html += '<p><font size="2"><b>Teksti "' + v.replace(/[<&]/g, '') + '" esiintyy ' + th.length + ' taulussa:</b> ' +
+          th.slice(0, 500).map(function (n) { return '<A HREF = "#Taulu ' + n + '">' + n + '</A>'; }).join(', ') +
+          (th.length > 500 ? ' …' : '') + '</font>';
+      }
+      info.textContent = '';
+    }
+    out.innerHTML = '<div style="float:right"><font size="2"><a href="javascript:void 0" id="sk-sulje">Sulje ✕</a></font></div>' + html;
+    out.style.display = 'block';
+    document.getElementById('sk-sulje').onclick = function () { inp.value = ''; search(); };
+  }
+})();
+</script>
+<script>
+// Sukukirjan muunnin: alkuperäinen HTML -> nopea, laiskasti piirtyvä HTML.
+// Toimii sekä selaimessa (converter.html) että Nodessa (build.js).
+function convertSukukirja(src, RUNTIME) {
+  src = src.replace(/\r\n?/g, '\n');
+  const lower = src; // markup on isoilla/pienillä kirjaimilla sekaisin -> regexit /i
+
+  // --- 1. Taulujen sijainnit ---
+  const anchorRe = /<A NAME="Taulu (\d+)"><\/A>/gi;
+  const anchors = [];
+  let m;
+  while ((m = anchorRe.exec(src))) anchors.push({ n: +m[1], pos: m.index });
+  if (!anchors.length) throw new Error('Tiedostosta ei löytynyt yhtään taulua (<A NAME="Taulu N">).');
+
+  const dls = [];
+  { const r = /<DL>/gi; let x; while ((x = r.exec(src))) dls.push(x.index); }
+  const lastDL = (pos) => {
+    let lo = 0, hi = dls.length - 1, best = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (dls[mid] <= pos) { best = dls[mid]; lo = mid + 1; } else hi = mid - 1; }
+    return best;
+  };
+  const starts = anchors.map(a => lastDL(a.pos));
+
+  // Hakemiston alku
+  const ixAnchor = src.search(/<A NAME="index">/i);
+  if (ixAnchor < 0) throw new Error('Hakemistoa (<A NAME="index">) ei löytynyt.');
+  const ixStart = (() => { const seg = src.slice(Math.max(0, ixAnchor - 2000), ixAnchor); const r = /<P>/gi; let x, last = -1; while ((x = r.exec(seg))) last = x.index; return last < 0 ? ixAnchor : ixAnchor - seg.length + last; })();
+
+  // Alkuosa (body-tagin jälkeen ensimmäiseen tauluun)
+  const bodyM = /<BODY[^>]*>/i.exec(src);
+  const bodyTag = bodyM ? bodyM[0] : '<BODY bgcolor="#FFFFFF">';
+  const headEndPos = bodyM ? bodyM.index + bodyM[0].length : 0;
+  const headPart = src.slice(0, bodyM ? bodyM.index : 0);
+  const titleM = /<title>([\s\S]*?)<\/title>/i.exec(headPart);
+  const preface = src.slice(headEndPos, starts[0]);
+
+  // Taulut
+  const T = [], N = [];
+  for (let i = 0; i < anchors.length; i++) {
+    const end = i + 1 < anchors.length ? starts[i + 1] : ixStart;
+    T.push(src.slice(starts[i], end));
+    N.push(anchors[i].n);
+  }
+
+  // --- 2. Hakemisto ---
+  const ixPart = src.slice(ixStart);
+  // ensimmäinen <TABLE> letter-linkkien jälkeen
+  const tblM = /<TABLE>/i.exec(ixPart);
+  const ixPre = ixPart.slice(0, tblM.index);
+  const afterTbl = ixPart.slice(tblM.index + tblM[0].length);
+  const closeIdx = afterTbl.search(/<\/TABLE>/i);
+  const rowsHtml = afterTbl.slice(0, closeIdx);
+  const ixPost = afterTbl.slice(closeIdx + '</TABLE>'.length);
+
+  const rowRe = /^<TR><TD valign="top"><FONT SIZE="2">([^<]*?)<\/FONT><\/TD><TD valign="top"><FONT SIZE="2">([\s\S]*?)<\/FONT><\/TD><TD><FONT SIZE="2">([\s\S]*?)<\/FONT><\/TD><\/TR>\s*$/;
+  const refRe = /^(?:<A HREF = "#Taulu (\d+)">\1<\/A>(?:, )?)*$/;
+  const sections = [{ id: null, head: '', rows: [] }];
+  const rawRows = rowsHtml.split(/(?=<TR>)/i).filter(r => r.trim());
+  let parsed = 0, raw = 0;
+  for (const r of rawRows) {
+    const lm = /^<TR><TD><A NAME="([^"]+)">/i.exec(r);
+    if (lm) { sections.push({ id: lm[1], head: r.replace(/\s+$/, ''), rows: [] }); continue; }
+    const rm = rowRe.exec(r);
+    const sec = sections[sections.length - 1];
+    if (rm && refRe.test(rm[3])) {
+      const nums = [...rm[3].matchAll(/#Taulu (\d+)/g)].map(x => +x[1]);
+      sec.rows.push([rm[1], rm[2], nums.join(',')]);
+      parsed++;
+    } else { sec.rows.push(r.replace(/\s+$/, '')); raw++; }
+  }
+  if (!sections[0].rows.length) sections.shift();
+
+  // --- 3. Korkeusarviot (px) ---
+  const est = T.map(t => {
+    const lines = (t.match(/\n/g) || []).length;
+    const txt = t.replace(/<[^>]*>/g, '').length;
+    return Math.round(20 + lines * 7.2 + txt * 0.12);
+  });
+
+  const data = { N, T, est, sections: sections.map(s => ({ id: s.id, head: s.head, rows: s.rows })) };
+  const json = JSON.stringify(data).replace(/<\//g, '<\\/');
+
+  const out =
+`<HTML>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+${titleM ? titleM[0] + '\n' : ''}<style>
+html,body{overflow-anchor:none}
+.sk-ph{display:block}
+#sk-haku{font-size:13px;width:14em}
+#sk-tulos{display:none;margin:6px 0;padding:6px;border:1px solid #999;background:#FFFFF0}
+#sk-tulos table{margin:0}
+#sk-info{font-size:12px;color:#555}
+</style>
+</head>
+${bodyTag}
+${preface.replace(/(<hr>)/i, '<font size="2">Haku: <input id="sk-haku" type="search" placeholder="nimi tai taulun nro" autocomplete="off"> <span id="sk-info"></span></font>\n<div id="sk-tulos"></div>\n$1')}<div id="sk-kirja"></div>
+${ixPre}<TABLE id="sk-ix"><colgroup><col><col><col></colgroup></TABLE>${ixPost.replace(/<\/body>[\s\S]*$/i, '')}
+<script id="sk-data" type="application/json">${json}<\/script>
+<script>
+${RUNTIME}
+<\/script>
+</body>
+</html>
+`;
+  return { html: out, stats: { taulut: T.length, hakemistoRivit: parsed, raakaRivit: raw, kirjaimet: sections.length } };
+}
+
+
+(function(){
+  var drop=document.getElementById('drop'), inp=document.getElementById('tiedosto'), tila=document.getElementById('tila'), lataa=document.getElementById('lataa');
+  drop.onclick=function(){inp.click();};
+  inp.onchange=function(){ if(inp.files[0]) kasittele(inp.files[0]); };
+  drop.ondragover=function(e){e.preventDefault();drop.classList.add('over');};
+  drop.ondragleave=function(){drop.classList.remove('over');};
+  drop.ondrop=function(e){e.preventDefault();drop.classList.remove('over'); if(e.dataTransfer.files[0]) kasittele(e.dataTransfer.files[0]);};
+  function kasittele(f){
+    lataa.innerHTML=''; tila.className=''; tila.textContent='Luetaan '+f.name+' ('+(f.size/1048576).toFixed(1)+' Mt)…';
+    var r=new FileReader();
+    r.onload=function(){
+      setTimeout(function(){
+        try{
+          var t0=performance.now();
+          var res=convertSukukirja(r.result, document.getElementById('runtime').textContent);
+          var blob=new Blob([res.html],{type:'text/html;charset=utf-8'});
+          var nimi=f.name.replace(/\.(html?)$/i,'')+'_nopea.htm';
+          var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nimi; a.className='btn'; a.textContent='Lataa '+nimi;
+          lataa.appendChild(a);
+          tila.textContent='Valmis ('+Math.round(performance.now()-t0)+' ms).\nTauluja: '+res.stats.taulut+', hakemiston nimiä: '+res.stats.hakemistoRivit+'.\nKoko: '+(blob.size/1048576).toFixed(1)+' Mt (alkuperäinen '+(f.size/1048576).toFixed(1)+' Mt).';
+          a.click();
+        }catch(err){ tila.className='virhe'; tila.textContent='Muunnos epäonnistui: '+err.message; }
+      },20);
+    };
+    r.onerror=function(){tila.className='virhe';tila.textContent='Tiedoston lukeminen epäonnistui.';};
+    r.readAsText(f,'utf-8');
+  }
+})();
+</script>
+</body></html>
