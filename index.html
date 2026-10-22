@@ -640,7 +640,8 @@ let ui = {
   panX: 0,
   panY: 0,
   activeTab: 'perus',
-  fileHandle: null
+  fileHandle: null,
+  localSource: true // false kun puu on avattu verkosta URL-parametrilla
 };
 
 function genId(){ return 'p_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
@@ -918,7 +919,46 @@ function autoBackup(){
   // se on luonteva, kattava paikka mitätöidä hakuindeksit ennen kuin mitään lukee niitä.
   invalidateIndexes();
   syncAllAutoEvents();
-  try{ localStorage.setItem('sukupuu_autobackup', JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}))); }catch(e){/* ohitetaan */}
+  // Verkosta (URL-parametrilla) avattu puu ei saa korvata paikallista tallennusta.
+  // Paikalliseksi se muuttuu vasta kun se tallennetaan omalle koneelle tai avataan paikallinen tiedosto.
+  if(!ui.localSource) return;
+  const json = JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}));
+  idbSet('backup', json).then(()=>{
+    // IndexedDB-tallennus onnistui -> vanha localStorage-kopio pois, ettei se jää vanhentuneena voimaan
+    try{ localStorage.removeItem('sukupuu_autobackup'); }catch(e){/* ohitetaan */}
+  }).catch(()=>{
+    try{ localStorage.setItem('sukupuu_autobackup', json); }
+    catch(e){ setFileStatus('⚠ Paikallinen tallennus selaimeen epäonnistui (tila täynnä) - tallenna tiedostoon!'); }
+  });
+}
+
+/* IndexedDB: paikallinen tallennus selaimeen. Toisin kuin localStorage (n. 5 Mt),
+   IndexedDB:hen mahtuu myös valokuvia sisältävä iso sukupuu. Lisäksi tänne
+   muistetaan viimeksi tallennetun/avatun tiedoston kahva, jotta Ctrl+S tallentaa
+   suoraan samaan tiedostoon myös ohjelman uudelleenavauksen jälkeen. */
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    if(!('indexedDB' in window)) return reject(new Error('IndexedDB ei käytettävissä'));
+    const req = indexedDB.open('sukupuu', 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore('kv'); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbTx(mode, fn){
+  return idbOpen().then(db=>new Promise((resolve, reject)=>{
+    const tx = db.transaction('kv', mode);
+    const store = tx.objectStore('kv');
+    const req = fn(store);
+    tx.oncomplete = ()=>{ db.close(); resolve(req ? req.result : undefined); };
+    tx.onerror = tx.onabort = ()=>{ db.close(); reject(tx.error); };
+  }));
+}
+function idbGet(key){ return idbTx('readonly', st=>st.get(key)); }
+function idbSet(key, val){ return idbTx('readwrite', st=>st.put(val, key)); }
+function idbDel(key){ return idbTx('readwrite', st=>st.delete(key)); }
+function rememberFileHandle(handle){
+  if(handle) idbSet('fileHandle', handle).catch(()=>{/* ohitetaan */});
 }
 function loadAutoBackupIfPresent(){
   try{
@@ -943,6 +983,14 @@ async function saveToFile(forceNew){
   const json = JSON.stringify(Object.assign({}, state, {uiSettings: getUiSettingsSnapshot()}), null, 2);
   try{
     if(hasFSAccess){
+      if(!forceNew && ui.fileHandle && ui.fileHandle.queryPermission){
+        // muistettu tiedosto edelliseltä kerralta -> pyydetään kirjoituslupa
+        let perm = await ui.fileHandle.queryPermission({mode:'readwrite'});
+        if(perm !== 'granted'){
+          try{ perm = await ui.fileHandle.requestPermission({mode:'readwrite'}); }catch(e){ perm = 'denied'; }
+        }
+        if(perm !== 'granted') ui.fileHandle = null;
+      }
       if(forceNew || !ui.fileHandle){
         ui.fileHandle = await window.showSaveFilePicker({
           suggestedName: 'sukupuu.json',
@@ -952,15 +1000,19 @@ async function saveToFile(forceNew){
       const writable = await ui.fileHandle.createWritable();
       await writable.write(json);
       await writable.close();
+      ui.localSource = true;
+      rememberFileHandle(ui.fileHandle);
       setFileStatus('Tallennettu: ' + ui.fileHandle.name);
     } else {
       downloadFallback(json);
+      ui.localSource = true;
       setFileStatus('Ladattu tiedostona (selaimesi ei tue suoraa tallennusta levylle)');
     }
   }catch(err){
     if(err && err.name === 'AbortError') return;
     console.error(err);
     downloadFallback(json);
+    ui.localSource = true;
   }
   autoBackup();
 }
@@ -982,8 +1034,10 @@ async function openFromFile(){
       });
       const file = await handle.getFile();
       const text = await file.text();
+      ui.localSource = true;
       loadStateFromJson(text);
       ui.fileHandle = handle;
+      rememberFileHandle(handle);
       setFileStatus('Avattu: ' + handle.name);
     } else {
       document.getElementById('fileImportInput').click();
@@ -1035,9 +1089,11 @@ function clearTree(){
       ui.selectedPersonId = null;
       ui.rootId = null;
       ui.fileHandle = null;
+      ui.localSource = true;
       ui.panX = 0; ui.panY = 0; ui.zoom = 1;
       closeEditor();
       try{ localStorage.removeItem('sukupuu_autobackup'); }catch(e){/* ohitetaan */}
+      idbDel('backup').catch(()=>{}); idbDel('fileHandle').catch(()=>{});
       syncUiControlsFromState();
       setFileStatus('Ei tallennettua tiedostoa');
       refreshAll();
@@ -3922,7 +3978,7 @@ hiddenGedcomInput.addEventListener('change', (e)=>{
   if(!file) return;
   const doImport = ()=>{
     const reader = new FileReader();
-    reader.onload = ()=>{ importGedcom(decodeGedcomBuffer(reader.result), file.name); };
+    reader.onload = ()=>{ ui.localSource = true; importGedcom(decodeGedcomBuffer(reader.result), file.name); };
     reader.readAsArrayBuffer(file);
   };
   showModal(
@@ -3942,7 +3998,7 @@ hiddenImportInput.addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = ()=>{ loadStateFromJson(reader.result); setFileStatus('Tuotu tiedostosta: '+file.name); };
+  reader.onload = ()=>{ ui.localSource = true; loadStateFromJson(reader.result); setFileStatus('Tuotu tiedostosta: '+file.name); };
   reader.readAsText(file);
   hiddenImportInput.value='';
 });
@@ -3970,7 +4026,9 @@ function seedExampleIfEmpty(){
   // Ei valmiita esimerkkihenkilöitä - käyttäjä aloittaa tyhjästä.
 }
 
-loadAutoBackupIfPresent();
+const startTreeUrl = getTreeUrlFromQuery();
+if(startTreeUrl) ui.localSource = false; // verkosta avattava puu - paikallista tallennusta ei kosketa
+loadAutoBackupIfPresent(); // ilman parametria tämä on näytettävä paikallinen tallennus
 seedExampleIfEmpty();
 if(!ui.rootId || !personById(ui.rootId)){
   // ei tallennettua oletusprofiilia (tai se ei enää löydy) - käytetään ensimmäistä henkilöä
@@ -3984,8 +4042,9 @@ refreshAll();
 /* ---------------------------------------------------------------------
    AVAUS URL-PARAMETRILLA
    Esim. index.html?eerk7777.github.io/sukupuu/sukupuu.json
-   (myös ?url=... tai ?file=... käy). Ilman parametria käytetään
-   edellistä versiota (selaimen paikallinen varmuuskopio).
+   (myös ?url=... tai ?file=... käy). Ilman parametria avataan
+   paikallinen tallennus. Verkosta avattu puu ei korvaa paikallista
+   tallennusta ennen kuin se tallennetaan omalle koneelle.
    Tallennus tehdään aina paikallisesti omalle koneelle.
 --------------------------------------------------------------------- */
 function getTreeUrlFromQuery(){
@@ -4011,22 +4070,50 @@ function getTreeUrlFromQuery(){
   return target;
 }
 
+async function loadLocalSaveOnStartup(){
+  let text = null, handle = null;
+  try{ text = await idbGet('backup'); }catch(e){/* ohitetaan */}
+  try{ handle = await idbGet('fileHandle'); }catch(e){/* ohitetaan */}
+  if(handle) ui.fileHandle = handle; // Ctrl+S tallentaa samaan tiedostoon kuin viimeksi
+  if(text){
+    try{
+      const data = JSON.parse(text);
+      if(data && Array.isArray(data.persons)){
+        state = data;
+        if(!state.treeName) state.treeName = 'Sukupuu';
+        invalidateIndexes();
+        ui.selectedPersonId = null;
+        if(!ui.rootId || !personById(ui.rootId)) ui.rootId = state.persons[0] ? state.persons[0].id : null;
+        applyUiSettingsFromData(data);
+        syncUiControlsFromState();
+        syncAllAutoEvents();
+        refreshAll();
+      }
+    }catch(e){ console.error(e); }
+  }
+  if(state.persons.length){
+    setFileStatus('Avattu paikallisesta tallennuksesta' + (handle ? ' (tiedosto: ' + handle.name + ')' : ''));
+  }
+}
+
 (async function loadTreeFromQuery(){
-  const url = getTreeUrlFromQuery();
-  if(!url) return; // ei parametria -> edellinen versio on jo ladattu
+  const url = startTreeUrl;
+  if(!url){ await loadLocalSaveOnStartup(); return; } // ei parametria -> paikallinen tallennus
   try{
     setFileStatus('Ladataan: ' + url + ' …');
     const res = await fetch(url, {cache:'no-store'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
+    ui.localSource = false;
     loadStateFromJson(text);
     ui.fileHandle = null; // tallennus aina paikallisesti omalle koneelle
     const name = url.split('/').pop().split('?')[0] || url;
     setFileStatus('Avattu verkosta: ' + name + ' (tallennus omalle koneelle)');
   }catch(err){
     console.error(err);
-    setFileStatus('Verkosta lataus epäonnistui - näytetään edellinen versio');
-    alert('Sukupuun lataaminen osoitteesta epäonnistui:\n' + url + '\n(' + err.message + ')\n\nNäytetään edellinen tallennettu versio.');
+    ui.localSource = true; // lataus epäonnistui -> jatketaan paikallisella tallennuksella
+    setFileStatus('Verkosta lataus epäonnistui - näytetään paikallinen tallennus');
+    alert('Sukupuun lataaminen osoitteesta epäonnistui:\n' + url + '\n(' + err.message + ')\n\nNäytetään paikallinen tallennus.');
   }
 })();
 
