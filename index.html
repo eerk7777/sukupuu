@@ -3317,7 +3317,7 @@ function saveDraftToState(){
   const idx = state.persons.findIndex(p=>p.id===ui.draft.id);
   if(idx>=0) state.persons[idx] = JSON.parse(JSON.stringify(ui.draft));
   autoBackup();
-  refreshAll();
+  refreshAll(true);
   document.getElementById('editorTitle').textContent = fullName(ui.draft);
 }
 
@@ -3618,7 +3618,7 @@ function renderRelationsTab(){
       const person = personById(d.id);
       person.parentIds = (person.parentIds||[]).filter(id=>id!==el.dataset.id);
       if(ui.draft.id===d.id) ui.draft.parentIds = person.parentIds;
-      autoBackup(); refreshAll(); renderRelationsTab();
+      autoBackup(); refreshAll(true); renderRelationsTab();
     });
   });
   document.getElementById('btnAddParent').disabled = parents.length>=2;
@@ -3643,7 +3643,7 @@ function renderRelationsTab(){
     el.querySelector('.rel-edit').addEventListener('click', ()=>editUnion(el.dataset.uid));
     el.querySelector('.rel-remove').addEventListener('click', ()=>{
       state.unions = state.unions.filter(u=>u.id!==el.dataset.uid);
-      autoBackup(); refreshAll(); renderRelationsTab();
+      autoBackup(); refreshAll(true); renderRelationsTab();
     });
   });
 
@@ -3665,7 +3665,7 @@ function renderRelationsTab(){
     el.querySelector('.rel-remove').addEventListener('click', ()=>{
       const child = personById(el.dataset.id);
       child.parentIds = (child.parentIds||[]).filter(id=>id!==d.id);
-      autoBackup(); refreshAll(); renderRelationsTab();
+      autoBackup(); refreshAll(true); renderRelationsTab();
     });
   });
 }
@@ -3689,7 +3689,7 @@ function editUnion(unionId){
     union.alkoi = document.getElementById('m-edit-sp-start').value.trim();
     union.paikka = document.getElementById('m-edit-sp-paikka').value.trim();
     union.paattyi = document.getElementById('m-edit-sp-end').value.trim();
-    autoBackup(); refreshAll(); renderRelationsTab();
+    autoBackup(); refreshAll(true); renderRelationsTab();
   });
   document.getElementById('m-edit-sp-type').value = union.tyyppi || 'avioliitto';
 }
@@ -3720,7 +3720,7 @@ document.getElementById('btnAddParent').addEventListener('click', ()=>{
     if(person.parentIds.length>=2 || person.parentIds.includes(parentId)) return false;
     person.parentIds.push(parentId);
     if(ui.draft.id===d.id) ui.draft.parentIds = person.parentIds;
-    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+    autoBackup(); refreshAll(true); renderRelationsTab(); renderRootSelect();
   });
   initPersonPicker('m-parent-existing', existingIds);
 });
@@ -3779,7 +3779,7 @@ document.getElementById('btnAddChild').addEventListener('click', ()=>{
       child.parentIds.push(secondParentId);
     }
 
-    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+    autoBackup(); refreshAll(true); renderRelationsTab(); renderRootSelect();
   });
   initPersonPicker('m-child-existing', [d.id]);
 });
@@ -3822,7 +3822,7 @@ document.getElementById('btnAddSpouse').addEventListener('click', ()=>{
       paattyi: document.getElementById('m-sp-end').value.trim(),
       huomiot:''
     });
-    autoBackup(); refreshAll(); renderRelationsTab(); renderRootSelect();
+    autoBackup(); refreshAll(true); renderRelationsTab(); renderRootSelect();
   });
   initPersonPicker('m-sp-existing', [d.id]);
 });
@@ -3954,11 +3954,12 @@ window.addEventListener('keydown', (e)=>{
 /* ---------------------------------------------------------------------
    PÄIVITYS
 --------------------------------------------------------------------- */
-function refreshAll(){
+function refreshAll(keepView){
   renderPersonList();
   renderRootSelect();
   renderTree();
-  fitToView();
+  // keepView=true: säilytetään nykyinen zoomaus ja panorointi (esim. profiilin tallennuksen jälkeen)
+  if(keepView) applyTransform(); else fitToView();
 }
 
 /* ---------------------------------------------------------------------
@@ -3979,6 +3980,55 @@ syncUiControlsFromState();
 syncAllAutoEvents();
 ui.panX = 60; ui.panY = 60;
 refreshAll();
+
+/* ---------------------------------------------------------------------
+   AVAUS URL-PARAMETRILLA
+   Esim. index.html?eerk7777.github.io/sukupuu/sukupuu.json
+   (myös ?url=... tai ?file=... käy). Ilman parametria käytetään
+   edellistä versiota (selaimen paikallinen varmuuskopio).
+   Tallennus tehdään aina paikallisesti omalle koneelle.
+--------------------------------------------------------------------- */
+function getTreeUrlFromQuery(){
+  const q = window.location.search.replace(/^\?/, '');
+  if(!q) return null;
+  let target = null;
+  const params = new URLSearchParams(q);
+  for(const key of ['url','file','src']){
+    if(params.get(key)){ target = params.get(key); break; }
+  }
+  if(!target){
+    // parametri ilman avainta: ?eerk7777.github.io/sukupuu/sukupuu.json
+    target = decodeURIComponent(q.split('&')[0]);
+    if(target.endsWith('=')) target = target.slice(0,-1);
+  }
+  target = target.trim();
+  if(!target) return null;
+  if(!/^[a-z][a-z0-9+.-]*:\/\//i.test(target) && !target.startsWith('/') && !target.startsWith('.')){
+    // ei protokollaa: jos näyttää verkkotunnukselta, lisätään https://
+    if(/^(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(target)) target = 'http://' + target;
+    else if(/^[^\/]+\.[a-z]{2,}(:\d+)?(\/|$)/i.test(target)) target = 'https://' + target;
+  }
+  return target;
+}
+
+(async function loadTreeFromQuery(){
+  const url = getTreeUrlFromQuery();
+  if(!url) return; // ei parametria -> edellinen versio on jo ladattu
+  try{
+    setFileStatus('Ladataan: ' + url + ' …');
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    loadStateFromJson(text);
+    ui.fileHandle = null; // tallennus aina paikallisesti omalle koneelle
+    const name = url.split('/').pop().split('?')[0] || url;
+    setFileStatus('Avattu verkosta: ' + name + ' (tallennus omalle koneelle)');
+  }catch(err){
+    console.error(err);
+    setFileStatus('Verkosta lataus epäonnistui - näytetään edellinen versio');
+    alert('Sukupuun lataaminen osoitteesta epäonnistui:\n' + url + '\n(' + err.message + ')\n\nNäytetään edellinen tallennettu versio.');
+  }
+})();
 
 })();
 </script>
