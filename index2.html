@@ -310,10 +310,45 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const byId = id => state.nodes.find(n => n.id === id);
 
 let saveWarned = false;
+// false kun puu on avattu verkosta URL-parametrilla: silloin paikallista tallennusta ei korvata
+// ennen kuin puu tallennetaan omalle koneelle tai avataan paikallinen tiedosto.
+let localSource = true;
 function save(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e){ if (!saveWarned){ saveWarned = true; alert('Selaimen muisti täyttyi (kuvat vievät tilaa). Tallenna työsi Tallenna tiedosto -napilla.'); } }
+  if (!localSource) return;
+  const json = JSON.stringify(state);
+  idbSet('backup', json).then(() => {
+    // IndexedDB-tallennus onnistui -> vanha localStorage-kopio pois, ettei se jää vanhentuneena voimaan
+    try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  }).catch(() => {
+    try{ localStorage.setItem(LS_KEY, json); }
+    catch(e){ if (!saveWarned){ saveWarned = true; alert('Selaimen muisti täyttyi (kuvat vievät tilaa). Tallenna työsi Tallenna tiedosto -napilla.'); } }
+  });
 }
+
+/* IndexedDB: paikallinen tallennus selaimeen (tilaa paljon enemmän kuin localStorageen).
+   Tänne muistetaan myös viimeksi tallennetun/avatun tiedoston kahva, jotta Tallenna
+   kirjoittaa suoraan samaan tiedostoon myös ohjelman uudelleenavauksen jälkeen. */
+function idbOpen(){
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) return reject(new Error('IndexedDB ei käytettävissä'));
+    const req = indexedDB.open('ydna-haplopuu', 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('kv'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbTx(mode, fn){
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', mode);
+    const req = fn(tx.objectStore('kv'));
+    tx.oncomplete = () => { db.close(); resolve(req ? req.result : undefined); };
+    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+  }));
+}
+function idbGet(key){ return idbTx('readonly', st => st.get(key)); }
+function idbSet(key, val){ return idbTx('readwrite', st => st.put(val, key)); }
+function idbDel(key){ return idbTx('readwrite', st => st.delete(key)); }
+function rememberFileHandle(h){ if (h) idbSet('fileHandle', h).catch(() => {}); }
 const OWN_DEFAULT = '★ OMA HAPLO';
 let formPhoto = null;
 function setPhoto(d){
@@ -1131,6 +1166,7 @@ function showFileName(){ $('fileLabel').textContent = state.settings.fileName ? 
 const dataBlob = () => new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
 async function writeHandle(h){
   const w = await h.createWritable(); await w.write(dataBlob()); await w.close();
+  localSource = true; rememberFileHandle(h);
   fileHandle = h; setFileName(h.name); flash('Tallennettu: ' + h.name);
 }
 function flash(msg){
@@ -1145,21 +1181,30 @@ async function saveAs(){
   }
   let name = prompt('Tiedoston nimi:', currentName()); if (!name) return;
   name = name.trim().replace(/[\\/:*?"<>|]/g, '_'); if (!/\.json$/i.test(name)) name += '.json';
-  setFileName(name); download(name, dataBlob());
+  localSource = true; setFileName(name); download(name, dataBlob());
 }
 $('bSaveAs').onclick = saveAs;
 $('bSave').onclick = async () => {
+  if (fileHandle){
+    // muistettu tiedosto edelliseltä kerralta -> pyydetään kirjoituslupa tarvittaessa
+    try{
+      if (fileHandle.queryPermission && await fileHandle.queryPermission({ mode: 'readwrite' }) !== 'granted'
+          && await fileHandle.requestPermission({ mode: 'readwrite' }) !== 'granted') fileHandle = null;
+    }catch(e){ fileHandle = null; }
+  }
   if (fileHandle){
     try{ await writeHandle(fileHandle); return; }
     catch(e){ if (e.name === 'AbortError') return; }   // oikeus evätty tms. -> kysytään nimi
   }
   if (FS_OK) return saveAs();
+  localSource = true; save();
   download(currentName(), dataBlob());
 };
 function loadData(js, name, handle){
   if (!Array.isArray(js.nodes)) throw 0;
   if (state.nodes.length && !confirm('Korvataanko nykyinen puu avattavalla tiedostolla?')) return;
   state = { nodes: js.nodes, settings: Object.assign(state.settings, js.settings || {}) };
+  localSource = true; rememberFileHandle(handle);
   fileHandle = handle || null; state.settings.fileName = name;
   endManual = false; $('mEnd').innerHTML = '';
   save(); syncSettings(); showFileName(); clearForm(null); refresh();
@@ -1201,7 +1246,7 @@ $('bSample').onclick = () => {
   ];
   state.settings.ownId = 'j';
   $('mEnd').innerHTML = '';
-  save(); clearForm(null); refresh();
+  localSource = true; save(); clearForm(null); refresh();
 };
 $('bClearAll').onclick = () => {
   if (!state.nodes.length){ clearForm(null); return; }
@@ -1211,8 +1256,9 @@ $('bClearAll').onclick = () => {
   state.nodes = [];
   state.settings.ownId = null; delete state.settings.ownLabel;
   fileHandle = null; delete state.settings.fileName; showFileName();
+  idbDel('fileHandle').catch(() => {});
   endManual = false; $('mEnd').innerHTML = '';
-  save(); clearForm(null); refresh();
+  localSource = true; save(); clearForm(null); refresh();
   $('fSnp').focus();
 };
 function syncSettings(){
@@ -1227,6 +1273,67 @@ function syncSettings(){
 /* ---------- Käynnistys ---------- */
 load(); syncSettings(); showFileName();
 if (state.settings.sidebarW) document.querySelector('aside').style.width = Math.round(state.settings.sidebarW) + 'px'; buildSwatches(); clearForm(null); refresh();
+
+/* ---------- Avaus URL-parametrilla ----------
+   Esim. index2.html?haplopuu.json  (suhteellinen polku sivun kansiosta)
+   tai   index2.html?eerk7777.github.io/sukupuu/haplopuu.json
+   (myös ?url=... tai ?file=... käy). Parametrin kanssa käytetään verkosta
+   löytyvää haplopuuta. Ilman parametria avataan viimeksi paikallisesti
+   tallennettu puu. Tallennus tehdään aina omalle koneelle. */
+function getTreeUrlFromQuery(){
+  const q = location.search.replace(/^\?/, '');
+  if (!q) return null;
+  let t = null;
+  const params = new URLSearchParams(q);
+  for (const k of ['url', 'file', 'src']) if (params.get(k)){ t = params.get(k); break; }
+  if (!t){ t = decodeURIComponent(q.split('&')[0]); if (t.endsWith('=')) t = t.slice(0, -1); }
+  t = t.trim();
+  if (!t) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(t)){
+    if (/^(localhost|127\.0\.0\.1)(:\d+)?\//i.test(t)) t = 'http://' + t;
+    else if (/^[^\/]+\.[a-z]{2,}(:\d+)?\//i.test(t)) t = 'https://' + t;   // verkkotunnus/polku
+    // muuten suhteellinen polku (esim. haplopuu.json) sivun omasta kansiosta
+  }
+  return new URL(t, location.href).href;
+}
+async function loadLocalSave(){
+  let json = null, h = null;
+  try{ json = await idbGet('backup'); }catch(e){}
+  try{ h = await idbGet('fileHandle'); }catch(e){}
+  if (h) fileHandle = h;   // Tallenna kirjoittaa samaan tiedostoon kuin viimeksi
+  if (json){
+    try{
+      const s = JSON.parse(json);
+      if (s && Array.isArray(s.nodes)){
+        state = { nodes: s.nodes, settings: Object.assign(state.settings, s.settings || {}) };
+        endManual = false; $('mEnd').innerHTML = '';
+        syncSettings(); showFileName(); clearForm(null); refresh();
+      }
+    }catch(e){ console.error(e); }
+  }
+}
+(async function startup(){
+  const url = getTreeUrlFromQuery();
+  if (!url){ await loadLocalSave(); return; }
+  localSource = false;
+  try{
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const js = JSON.parse(await r.text());
+    if (!js || !Array.isArray(js.nodes)) throw new Error('ei haplopuu-tiedosto');
+    state = { nodes: js.nodes, settings: Object.assign(state.settings, js.settings || {}) };
+    fileHandle = null;   // tallennus aina omalle koneelle
+    state.settings.fileName = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'haplopuu.json';
+    endManual = false; $('mEnd').innerHTML = '';
+    syncSettings(); showFileName(); clearForm(null); refresh();
+    $('fileLabel').textContent = '· ' + state.settings.fileName + ' (verkosta)';
+  }catch(e){
+    console.error(e);
+    localSource = true;
+    alert('Haplopuun lataaminen osoitteesta epäonnistui:\n' + url + '\n(' + e.message + ')\n\nAvataan viimeksi paikallisesti tallennettu puu.');
+    await loadLocalSave();
+  }
+})();
 </script>
 </body>
 </html>
