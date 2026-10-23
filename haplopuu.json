@@ -1068,9 +1068,9 @@
       "age": null,
       "ageErr": null,
       "color": "#1f4e8c",
-      "region": "",
-      "lat": 66.8203,
-      "lng": 17.70996,
+      "region": "Merikarvia",
+      "lat": 61.85829,
+      "lng": 21.50044,
       "notes": "",
       "person": "",
       "photo": null,
@@ -1503,7 +1503,7 @@
     "edgeLabels": true,
     "base": "Katukartta (Esri)",
     "ownLabel": "Merikarvia",
-    "fileName": "haplopuu-JonasSvensk-V2026-10-23_1226.json",
+    "fileName": "haplopuu-JonasSvensk-V2026-10-23_1401.json",
     "sidebarW": 552
   }
 }
