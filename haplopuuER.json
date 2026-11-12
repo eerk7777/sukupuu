@@ -3671,6 +3671,24 @@
       "hide": false,
       "hideSub": false,
       "hideAll": false
+    },
+    {
+      "id": "c658d285-4f67-4baf-9393-d12ce214e4f9",
+      "snp": "Juho Aaron Haapaniemi 1916",
+      "alias": "",
+      "parentId": "83b02e5a-983e-4e31-969d-0a7534fd4d3e",
+      "age": 100,
+      "ageErr": null,
+      "color": "#1f4e8c",
+      "region": "Pomarkku",
+      "lat": 61.69354,
+      "lng": 22.0084,
+      "notes": "",
+      "person": "",
+      "photo": null,
+      "hide": false,
+      "hideSub": false,
+      "hideAll": false
     }
   ],
   "settings": {
@@ -3684,7 +3702,7 @@
     "rootBottom": true,
     "base": "Katukartta (Esri)",
     "ownLabel": "vävyisäntä Erkki Rossi",
-    "fileName": "haplopuu-R-BY60511_Rossi-V2026-11-12_1540.json",
+    "fileName": "haplopuuER.json",
     "sidebarW": 521.99658203125
   }
 }
